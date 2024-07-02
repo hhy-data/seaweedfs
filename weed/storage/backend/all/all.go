@@ -7,4 +7,5 @@ package all
 import (
 	_ "github.com/seaweedfs/seaweedfs/weed/storage/backend/rclone_backend"
 	_ "github.com/seaweedfs/seaweedfs/weed/storage/backend/s3_backend"
+	_ "github.com/seaweedfs/seaweedfs/weed/storage/backend/udm"
 )
