@@ -1,0 +1,79 @@
+FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/golang:1.23.2-bullseye as builder
+
+RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
+
+RUN echo "deb http://mirrors.aliyun.com/debian/ bullseye main non-free contrib" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/debian/ bullseye-updates main non-free contrib" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/debian-security bullseye-security main" >> /etc/apt/sources.list
+
+RUN apt-get update && \
+    apt-get install -y build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev libzstd-dev
+
+ENV ROCKSDB_VERSION v9.3.1
+
+
+RUN wget https://github.com/facebook/rocksdb/archive/refs/tags/${ROCKSDB_VERSION}.tar.gz -O /tmp/rocksdb.tar.gz && \
+    cd /tmp && \
+    tar -xzf rocksdb.tar.gz && \
+    cd rocksdb-${ROCKSDB_VERSION#v} && \
+    PORTABLE=1 make -j4 static_lib && \
+    make install-static
+
+ENV CGO_CFLAGS "-I/usr/local/include"
+ENV CGO_LDFLAGS "-L/usr/local/lib -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy -llz4 -lzstd"
+ENV CGO_ENABLED=1
+ENV GOPROXY=https://goproxy.io,direct
+
+WORKDIR /seaweedfs
+
+COPY go.mod go.sum ./
+
+# Get dependencies - will also be cached if we won't change mod/sum
+RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
+    go mod download
+
+COPY weed weed
+
+RUN cd weed && \
+    go install -buildvcs=false -tags "rocksdb" -ldflags "-extldflags -static"
+
+FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/alpine:3.18.4 AS final
+
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /go/bin/weed /usr/bin/
+
+RUN mkdir -p /etc/seaweedfs
+COPY ./docker/filer_rocksdb.toml /etc/seaweedfs/filer.toml
+COPY ./docker/entrypoint.sh /entrypoint.sh
+
+
+RUN apk add fuse # for weed mount
+RUN apk add curl # for health checks
+
+RUN apk add --no-cache snappy zlib bzip2 gflags lz4 zstd
+
+# volume server grpc port
+EXPOSE 18080
+# volume server http port
+EXPOSE 8080
+# filer server grpc port
+EXPOSE 18888
+# filer server http port
+EXPOSE 8888
+# master server shared grpc port
+EXPOSE 19333
+# master server shared http port
+EXPOSE 9333
+# s3 server http port
+EXPOSE 8333
+# webdav server http port
+EXPOSE 7333
+
+RUN mkdir -p /data/filer_rocksdb
+
+#VOLUME /data
+#WORKDIR /data
+
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
