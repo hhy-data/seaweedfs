@@ -1,0 +1,77 @@
+FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/golang:1.26.2-trixie as builder
+
+RUN sed -i -E "s/[a-zA-Z0-9]+.debian.org/mirrors.aliyun.com/g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev libzstd-dev
+
+ARG ROCKSDB_VERSION=v10.10.1
+
+RUN wget https://github.com/facebook/rocksdb/archive/refs/tags/${ROCKSDB_VERSION}.tar.gz -O /tmp/rocksdb.tar.gz && \
+    cd /tmp && \
+    tar -xzf rocksdb.tar.gz && \
+    cd rocksdb-${ROCKSDB_VERSION#v} && \
+    PORTABLE=1 make -j4 static_lib && \
+    make install-static
+
+ENV CGO_CFLAGS "-I/usr/local/include"
+ENV CGO_LDFLAGS "-L/usr/local/lib -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy -llz4 -lzstd"
+ENV CGO_ENABLED=1
+#ENV GOPROXY=https://goproxy.io,direct
+ARG GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct
+
+WORKDIR /seaweedfs
+
+COPY go.mod go.sum ./
+
+# Get dependencies - will also be cached if we won't change mod/sum
+RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
+    go mod download
+
+COPY weed weed
+COPY telemetry telemetry
+
+RUN cd weed && \
+    go install -buildvcs=false -tags "rocksdb" -ldflags "-extldflags -static"
+
+FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/alpine:3.18.4 AS final
+
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /go/bin/weed /usr/bin/
+
+RUN mkdir -p /etc/seaweedfs
+COPY ./docker/filer_rocksdb.toml /etc/seaweedfs/filer.toml
+COPY ./docker/entrypoint.sh /entrypoint.sh
+
+RUN apk add fuse curl # for weed mount and health checks
+
+RUN apk add --no-cache snappy zlib bzip2 lz4 zstd su-exec && \
+    addgroup -g 1000 seaweed && \
+    adduser -D -u 1000 -G seaweed seaweed
+
+# volume server grpc port
+EXPOSE 18080
+# volume server http port
+EXPOSE 8080
+# filer server grpc port
+EXPOSE 18888
+# filer server http port
+EXPOSE 8888
+# master server shared grpc port
+EXPOSE 19333
+# master server shared http port
+EXPOSE 9333
+# s3 server http port
+EXPOSE 8333
+# webdav server http port
+EXPOSE 7333
+
+RUN mkdir -p /data/filer_rocksdb && \
+    chown -R seaweed:seaweed /data && \
+    chown -R seaweed:seaweed /etc/seaweedfs
+
+#VOLUME /data
+#WORKDIR /data
+
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
