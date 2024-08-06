@@ -523,3 +523,6 @@ require (
 // lib/go/thrift/framed_transport.go, which overflows int on 32-bit GOARCHes
 // (e.g. openbsd/arm, linux/arm). Pin to v0.22.0 until upstream fixes it.
 replace github.com/apache/thrift => github.com/apache/thrift v0.22.0
+
+// tyler-smith/go-bip39 repo has been removed from GitHub, use base/go-bip39 fork
+replace github.com/tyler-smith/go-bip39 => github.com/base/go-bip39 v1.1.0
