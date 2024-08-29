@@ -64,6 +64,7 @@ var (
 	serverWhiteListOption     = cmdServer.Flag.String("whiteList", "", "comma separated Ip addresses having write permission. No limit if empty.")
 	serverDisableHttp         = cmdServer.Flag.Bool("disableHttp", false, "disable http requests, only gRPC operations are allowed.")
 	serverIamConfig           = cmdServer.Flag.String("iam.config", "", "path to the advanced IAM config file for S3. An alias for -s3.iam.config, but with lower priority.")
+	serverDisableVacuum       = cmdServer.Flag.Bool("disableVacuum", false, "disable vacuum.")
 	volumeDataFolders         = cmdServer.Flag.String("dir", os.TempDir(), "directories to store data files. dir[,dir]...")
 	volumeMaxDataVolumeCounts = cmdServer.Flag.String("volume.max", "8", "maximum numbers of volumes, count[,count]... If set to zero, the limit will be auto configured as free disk space divided by volume size.")
 	volumeMinFreeSpacePercent = cmdServer.Flag.String("volume.minFreeSpacePercent", "1", "minimum free disk space (default to 1%). Low disk space will mark all volumes as ReadOnly (deprecated, use minFreeSpace instead).")
@@ -299,6 +300,7 @@ func runServer(cmd *Command, args []string) bool {
 	sftpOptions.dataCenter = serverDataCenter
 	filerOptions.disableHttp = serverDisableHttp
 	masterOptions.disableHttp = serverDisableHttp
+	masterOptions.disableVacuum = serverDisableVacuum
 
 	filerAddress := string(pb.NewServerAddress(*serverIp, *filerOptions.port, *filerOptions.portGrpc))
 	s3Options.filer = &filerAddress

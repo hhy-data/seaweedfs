@@ -12,7 +12,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"github.com/seaweedfs/seaweedfs/weed/storage/types"
 
-	backoff "github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v4"
 
 	hashicorpRaft "github.com/hashicorp/raft"
 	"github.com/seaweedfs/raft"
@@ -60,7 +60,7 @@ type Topology struct {
 	LastLeaderChangeTime time.Time
 }
 
-func NewTopology(id string, seq sequence.Sequencer, volumeSizeLimit uint64, pulse int, replicationAsMin bool) *Topology {
+func NewTopology(id string, seq sequence.Sequencer, volumeSizeLimit uint64, pulse int, replicationAsMin bool, isDisableVacuum ...bool) *Topology {
 	t := &Topology{}
 	t.id = NodeId(id)
 	t.nodeType = "Topology"
@@ -73,6 +73,7 @@ func NewTopology(id string, seq sequence.Sequencer, volumeSizeLimit uint64, puls
 	t.pulse = int64(pulse)
 	t.volumeSizeLimit = volumeSizeLimit
 	t.replicationAsMin = replicationAsMin
+	t.isDisableVacuum = len(isDisableVacuum) > 0 && isDisableVacuum[0]
 
 	t.Sequence = seq
 
