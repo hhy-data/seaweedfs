@@ -139,6 +139,8 @@ type Filer struct {
 	// Nil for Filer literals built without NewFiler.
 	flushCtx    context.Context
 	flushCancel context.CancelFunc
+
+	wormAutoCommitController *wormAutoCommitController
 }
 
 func NewFiler(masters pb.ServerDiscovery, dialOptions *DialOptions, filerHost pb.ServerAddress, filerGroup string, collection string, replication string, dataCenter string, maxFilenameLength uint32, notifyFn func()) *Filer {
@@ -626,6 +628,8 @@ func (f *Filer) CreateEntry(ctx context.Context, entry *Entry, existing *Entry, 
 		if !entry.IsDirectory() {
 			stats.FilerObjectSizeBytesHistogram.Observe(float64(entry.Size()))
 		}
+
+		f.maybeCommitAsWORM(entry)
 	} else {
 		unlockDirectory()
 		if o_excl {
@@ -662,6 +666,7 @@ func (f *Filer) CreateEntry(ctx context.Context, entry *Entry, existing *Entry, 
 			}
 			return fmt.Errorf("update entry %s: %w", entry.FullPath, err)
 		}
+		f.maybeCommitAsWORM(entry)
 	}
 
 	f.NotifyUpdateEvent(ctx, oldEntry, entry, true, isFromOtherCluster, signatures)

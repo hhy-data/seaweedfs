@@ -238,6 +238,12 @@ func (wfs *WFS) Rename(cancel <-chan struct{}, in *fuse.RenameIn, oldName string
 		return status
 	}
 
+	if wormEnforced, _ := wfs.wormEnforcedForEntry(oldPath, oldEntry); wormEnforced {
+		return fuse.EPERM
+	}
+
+	glog.V(4).Infof("dir Rename %s => %s", oldPath, newPath)
+
 	// POSIX: enforce sticky bit on the source directory.
 	if oldDirEntry, _, dirCode := wfs.maybeLoadEntry(ctx, oldDir); dirCode != fuse.OK {
 		return dirCode

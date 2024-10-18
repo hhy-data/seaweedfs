@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/cluster"
@@ -235,6 +237,11 @@ type FilerServer struct {
 }
 
 func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption) (fs *FilerServer, err error) {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	v := util.GetViper()
 	signingKey := v.GetString("jwt.filer_signing.key")
@@ -396,7 +403,7 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	var existingNodes []*master_pb.ClusterNodeUpdate
 	for {
 		var listErr error
-		existingNodes, listErr = fs.filer.ListExistingPeerUpdates(context.Background())
+		existingNodes, listErr = fs.filer.ListExistingPeerUpdates(ctx)
 		if listErr == nil {
 			break
 		}
@@ -433,7 +440,9 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 
 	fs.filer.LoadRemoteStorageConfAndMapping()
 
-	fs.filer.RebuildRemoteDeletionTombstones(context.Background())
+	fs.filer.RebuildRemoteDeletionTombstones(ctx)
+
+	fs.filer.StartWormAutoCommitControllerInBackground(ctx)
 
 	grace.OnReload(fs.Reload)
 

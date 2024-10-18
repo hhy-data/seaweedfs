@@ -240,6 +240,11 @@ func (wfs *WFS) applySetAttr(path util.FullPath, input *fuse.SetAttrIn, entry *f
 		// commit the file to worm when it is set to readonly at the first time
 		if entry.WormEnforcedAtTsNs == 0 && wormEnabled && !hasWritePermission(mode) {
 			entry.WormEnforcedAtTsNs = time.Now().UnixNano()
+
+			status := wfs.commitFileAncestorsToWorm(context.Background(), string(path))
+			if status != fuse.OK {
+				return status
+			}
 		}
 
 		// glog.V(4).Infof("setAttr mode %o", mode)
@@ -280,6 +285,31 @@ func (wfs *WFS) applySetAttr(path util.FullPath, input *fuse.SetAttrIn, entry *f
 	now := time.Now()
 	entry.Attributes.Ctime = now.Unix()
 	entry.Attributes.CtimeNs = int32(now.Nanosecond())
+
+	return fuse.OK
+}
+
+func (wfs *WFS) commitFileAncestorsToWorm(ctx context.Context, path string) fuse.Status {
+	for path != wfs.option.FilerMountRootPath {
+		// get parent dir
+		path, _ = util.FullPath(path).DirAndName()
+		entry, _, status := wfs.maybeLoadEntry(ctx, util.FullPath(path))
+		if status != fuse.OK {
+			return status
+		}
+
+		wormEnforced, wormEnabled := wfs.wormEnforcedForEntry(util.FullPath(path), entry)
+		if wormEnforced {
+			return fuse.OK
+		} else if wormEnabled {
+			// worm is enabled but not enforced yet
+			entry.WormEnforcedAtTsNs = time.Now().UnixNano()
+			status = wfs.saveEntry(util.FullPath(path), entry)
+			if status != fuse.OK {
+				return status
+			}
+		}
+	}
 
 	return fuse.OK
 }
