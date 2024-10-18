@@ -1,13 +1,15 @@
 package mount
 
 import (
+	"os"
+	"syscall"
+	"time"
+
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
-	"os"
-	"syscall"
-	"time"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
 func (wfs *WFS) GetAttr(cancel <-chan struct{}, input *fuse.GetAttrIn, out *fuse.AttrOut) (code fuse.Status) {
@@ -41,7 +43,7 @@ func (wfs *WFS) SetAttr(cancel <-chan struct{}, input *fuse.SetAttrIn, out *fuse
 	}
 
 	path, fh, entry, status := wfs.maybeReadEntry(input.NodeId)
-	if status != fuse.OK {
+	if status != fuse.OK || entry == nil {
 		return status
 	}
 	if fh != nil {
@@ -49,7 +51,12 @@ func (wfs *WFS) SetAttr(cancel <-chan struct{}, input *fuse.SetAttrIn, out *fuse
 		defer fh.entryLock.Unlock()
 	}
 
-	if size, ok := input.GetSize(); ok && entry != nil {
+	wormEnforced, wormEnabled := wfs.wormEnforcedForEntry(path, entry)
+	if wormEnforced {
+		return fuse.EPERM
+	}
+
+	if size, ok := input.GetSize(); ok {
 		glog.V(4).Infof("%v setattr set size=%v chunks=%d", path, size, len(entry.GetChunks()))
 		if size < filer.FileSize(entry) {
 			// fmt.Printf("truncate %v \n", fullPath)
@@ -84,6 +91,16 @@ func (wfs *WFS) SetAttr(cancel <-chan struct{}, input *fuse.SetAttrIn, out *fuse
 	}
 
 	if mode, ok := input.GetMode(); ok {
+		// commit the file to worm when it is set to readonly at the first time
+		if entry.WormEnforcedAtTsNs == 0 && wormEnabled && !hasWritePermission(mode) {
+			entry.WormEnforcedAtTsNs = time.Now().UnixNano()
+
+			status = wfs.commitFileAncestorsToWorm(string(path))
+			if status != fuse.OK {
+				return status
+			}
+		}
+
 		// glog.V(4).Infof("setAttr mode %o", mode)
 		entry.Attributes.FileMode = chmod(entry.Attributes.FileMode, mode)
 		if input.NodeId == 1 {
@@ -127,6 +144,31 @@ func (wfs *WFS) SetAttr(cancel <-chan struct{}, input *fuse.SetAttrIn, out *fuse
 
 	return wfs.saveEntry(path, entry)
 
+}
+
+func (wfs *WFS) commitFileAncestorsToWorm(path string) fuse.Status {
+	for path != wfs.option.FilerMountRootPath {
+		// get parent dir
+		path, _ = util.FullPath(path).DirAndName()
+		entry, status := wfs.maybeLoadEntry(util.FullPath(path))
+		if status != fuse.OK {
+			return status
+		}
+
+		wormEnforced, wormEnabled := wfs.wormEnforcedForEntry(util.FullPath(path), entry)
+		if wormEnforced {
+			return fuse.OK
+		} else if wormEnabled {
+			// worm is enabled but not enforced yet
+			entry.WormEnforcedAtTsNs = time.Now().UnixNano()
+			status = wfs.saveEntry(util.FullPath(path), entry)
+			if status != fuse.OK {
+				return status
+			}
+		}
+	}
+
+	return fuse.OK
 }
 
 func (wfs *WFS) setRootAttr(out *fuse.AttrOut) {
@@ -213,6 +255,14 @@ func (wfs *WFS) outputFilerEntry(out *fuse.EntryOut, inode uint64, entry *filer.
 
 func chmod(existing uint32, mode uint32) uint32 {
 	return existing&^07777 | mode&07777
+}
+
+const ownerWrite = 0o200
+const groupWrite = 0o020
+const otherWrite = 0o002
+
+func hasWritePermission(mode uint32) bool {
+	return (mode&ownerWrite != 0) || (mode&groupWrite != 0) || (mode&otherWrite != 0)
 }
 
 func toSyscallMode(mode os.FileMode) uint32 {
