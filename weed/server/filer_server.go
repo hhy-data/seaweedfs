@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/credential"
@@ -154,6 +156,11 @@ type FilerServer struct {
 }
 
 func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption) (fs *FilerServer, err error) {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	v := util.GetViper()
 	signingKey := v.GetString("jwt.filer_signing.key")
@@ -235,7 +242,7 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	fs.checkWithMaster()
 
 	go stats.LoopPushingMetric("filer", string(fs.option.Host), fs.metricsAddress, fs.metricsIntervalSec)
-	go fs.filer.MasterClient.KeepConnectedToMaster(context.Background())
+	go fs.filer.MasterClient.KeepConnectedToMaster(ctx)
 
 	fs.option.recursiveDelete = v.GetBool("filer.options.recursive_delete")
 	v.SetDefault("filer.options.buckets_folder", "/buckets")
@@ -278,7 +285,7 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 		readonlyMux.HandleFunc("/", fs.filerGuard.WhiteList(requestIDMiddleware(fs.readonlyFilerHandler)))
 	}
 
-	existingNodes := fs.filer.ListExistingPeerUpdates(context.Background())
+	existingNodes := fs.filer.ListExistingPeerUpdates(ctx)
 	startFromTime := time.Now().Add(-filer.LogFlushInterval)
 	if isFresh {
 		glog.V(0).Infof("%s bootstrap from peers %+v", option.Host, existingNodes)
@@ -295,6 +302,8 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	fs.filer.LoadFilerConf()
 
 	fs.filer.LoadRemoteStorageConfAndMapping()
+
+	fs.filer.StartWormAutoCommitControllerInBackground(ctx)
 
 	grace.OnReload(fs.Reload)
 
