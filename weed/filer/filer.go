@@ -79,6 +79,8 @@ type Filer struct {
 	// rebuild finishes; lazy remote reads wait on it so a pending delete
 	// cannot resurrect in the gap.
 	remoteTombstonesDone atomic.Pointer[chan struct{}]
+
+	wormAutoCommitController *wormAutoCommitController
 }
 
 func NewFiler(masters pb.ServerDiscovery, grpcDialOption grpc.DialOption, filerHost pb.ServerAddress, filerGroup string, collection string, replication string, dataCenter string, maxFilenameLength uint32, notifyFn func()) *Filer {
@@ -321,6 +323,8 @@ func (f *Filer) CreateEntry(ctx context.Context, entry *Entry, existing *Entry, 
 		if !entry.IsDirectory() {
 			stats.FilerObjectSizeBytesHistogram.Observe(float64(entry.Size()))
 		}
+
+		f.maybeCommitAsWORM(entry)
 	} else {
 		if o_excl {
 			glog.V(3).InfofCtx(ctx, "EEXIST: entry %s already exists", entry.FullPath)
@@ -335,6 +339,7 @@ func (f *Filer) CreateEntry(ctx context.Context, entry *Entry, existing *Entry, 
 			}
 			return fmt.Errorf("update entry %s: %w", entry.FullPath, err)
 		}
+		f.maybeCommitAsWORM(entry)
 	}
 
 	f.NotifyUpdateEvent(ctx, oldEntry, entry, true, isFromOtherCluster, signatures)
