@@ -4,20 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/pb"
-	"google.golang.org/grpc"
 	"math/rand/v2"
 	"strings"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb"
+	"google.golang.org/grpc"
 
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 )
 
 type Location struct {
-	Url        string `json:"url,omitempty"`
-	PublicUrl  string `json:"publicUrl,omitempty"`
-	DataCenter string `json:"dataCenter,omitempty"`
-	GrpcPort   int    `json:"grpcPort,omitempty"`
+	Url          string `json:"url,omitempty"`
+	PublicUrl    string `json:"publicUrl,omitempty"`
+	DataCenter   string `json:"dataCenter,omitempty"`
+	GrpcPort     int    `json:"grpcPort,omitempty"`
+	DataInRemote bool   `json:"dataInRemote,omitempty"`
 }
 
 func (l *Location) ServerAddress() pb.ServerAddress {
@@ -95,10 +97,11 @@ func LookupVolumeIds(masterFn GetMasterFn, grpcDialOption grpc.DialOption, vids 
 			var locations []Location
 			for _, loc := range vidLocations.Locations {
 				locations = append(locations, Location{
-					Url:        loc.Url,
-					PublicUrl:  loc.PublicUrl,
-					DataCenter: loc.DataCenter,
-					GrpcPort:   int(loc.GrpcPort),
+					Url:          loc.Url,
+					PublicUrl:    loc.PublicUrl,
+					DataCenter:   loc.DataCenter,
+					GrpcPort:     int(loc.GrpcPort),
+					DataInRemote: loc.DataInRemote,
 				})
 			}
 			if vidLocations.Error != "" {

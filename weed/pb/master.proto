@@ -109,6 +109,7 @@ message VolumeInformationMessage {
   string remote_storage_name = 13;
   string remote_storage_key = 14;
   string disk_type = 15;
+  bool remote_only = 16;
 }
 
 message VolumeShortInformationMessage {
@@ -199,6 +200,7 @@ message Location {
   string public_url = 2;
   uint32 grpc_port = 3;
   string data_center = 4;
+  bool data_in_remote = 5;
 }
 
 message AssignRequest {

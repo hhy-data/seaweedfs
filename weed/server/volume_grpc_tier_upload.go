@@ -87,6 +87,8 @@ func (vs *VolumeServer) VolumeTierMoveDatToRemote(req *volume_server_pb.VolumeTi
 		return fmt.Errorf("volume %d failed to load remote file: %v", v.Id, err)
 	}
 
+	v.SetRemoteOnly(true)
+
 	if !req.KeepLocalDatFile {
 		os.Remove(v.FileName(".dat"))
 	}

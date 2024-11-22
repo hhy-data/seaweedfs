@@ -78,6 +78,7 @@ func (vs *VolumeServer) VolumeTierMoveDatFromRemote(req *volume_server_pb.Volume
 		return fmt.Errorf("volume %d failed to save remote file info: %v", v.Id, err)
 	}
 
+	v.SetRemoteOnly(false)
 	v.DataBackend.Close()
 	v.DataBackend = nil
 

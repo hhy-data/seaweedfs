@@ -71,11 +71,13 @@ func (mc *MasterClient) LookupFileIdWithFallback(fileId string) (fullUrls []stri
 		for vid, vidLocation := range resp.VolumeIdLocations {
 			for _, vidLoc := range vidLocation.Locations {
 				loc := Location{
-					Url:        vidLoc.Url,
-					PublicUrl:  vidLoc.PublicUrl,
-					GrpcPort:   int(vidLoc.GrpcPort),
-					DataCenter: vidLoc.DataCenter,
+					Url:          vidLoc.Url,
+					PublicUrl:    vidLoc.PublicUrl,
+					GrpcPort:     int(vidLoc.GrpcPort),
+					DataCenter:   vidLoc.DataCenter,
+					DataInRemote: vidLoc.DataInRemote,
 				}
+				glog.V(1).Infof("found location %s for %s, data in remote: %v", loc.Url, fileId, loc.DataInRemote)
 				mc.vidMap.addLocation(uint32(vid), loc)
 				httpUrl := "http://" + loc.Url + "/" + fileId
 				// Prefer same data center

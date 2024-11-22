@@ -3,12 +3,13 @@ package wdclient
 import (
 	"errors"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 )
@@ -24,10 +25,11 @@ type HasLookupFileIdFunction interface {
 type LookupFileIdFunctionType func(fileId string) (targetUrls []string, err error)
 
 type Location struct {
-	Url        string `json:"url,omitempty"`
-	PublicUrl  string `json:"publicUrl,omitempty"`
-	DataCenter string `json:"dataCenter,omitempty"`
-	GrpcPort   int    `json:"grpcPort,omitempty"`
+	Url          string `json:"url,omitempty"`
+	PublicUrl    string `json:"publicUrl,omitempty"`
+	DataCenter   string `json:"dataCenter,omitempty"`
+	GrpcPort     int    `json:"grpcPort,omitempty"`
+	DataInRemote bool   `json:"dataInRemote,omitempty"`
 }
 
 func (l Location) ServerAddress() pb.ServerAddress {

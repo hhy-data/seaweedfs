@@ -69,6 +69,9 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 		for _, loc := range locations.Locations {
 			volumeServerAddress := filerClient.AdjustedUrl(loc)
 			targetUrl := fmt.Sprintf("http://%s/%s", volumeServerAddress, fileId)
+
+			glog.V(1).Infof("lookup %s => %s, data in remote: %v", fileId, targetUrl, loc.DataInRemote)
+
 			if fcDataCenter == "" || fcDataCenter != loc.DataCenter {
 				otherTargetUrls = append(otherTargetUrls, targetUrl)
 			} else {

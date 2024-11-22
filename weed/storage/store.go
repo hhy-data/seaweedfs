@@ -107,6 +107,7 @@ func NewStore(grpcDialOption grpc.DialOption, ip string, port int, grpcPort int,
 
 	return
 }
+
 func (s *Store) AddVolume(volumeId needle.VolumeId, collection string, needleMapKind NeedleMapKind, replicaPlacement string, ttlString string, preallocate int64, MemoryMapMaxSizeMb uint32, diskType DiskType, ldbTimeout int64) error {
 	rt, e := super_block.NewReplicaPlacementFromString(replicaPlacement)
 	if e != nil {
@@ -119,6 +120,7 @@ func (s *Store) AddVolume(volumeId needle.VolumeId, collection string, needleMap
 	e = s.addVolume(volumeId, collection, needleMapKind, rt, ttl, preallocate, MemoryMapMaxSizeMb, diskType, ldbTimeout)
 	return e
 }
+
 func (s *Store) DeleteCollection(collection string) (e error) {
 	for _, location := range s.Locations {
 		e = location.DeleteCollectionFromDiskLocation(collection)
@@ -139,6 +141,7 @@ func (s *Store) findVolume(vid needle.VolumeId) *Volume {
 	}
 	return nil
 }
+
 func (s *Store) FindFreeLocation(filterFn func(location *DiskLocation) bool) (ret *DiskLocation) {
 	max := int32(0)
 	for _, location := range s.Locations {
@@ -159,6 +162,7 @@ func (s *Store) FindFreeLocation(filterFn func(location *DiskLocation) bool) (re
 	}
 	return ret
 }
+
 func (s *Store) addVolume(vid needle.VolumeId, collection string, needleMapKind NeedleMapKind, replicaPlacement *super_block.ReplicaPlacement, ttl *needle.TTL, preallocate int64, memoryMapMaxSizeMb uint32, diskType DiskType, ldbTimeout int64) error {
 	if s.findVolume(vid) != nil {
 		return fmt.Errorf("Volume Id %d already exists!", vid)
@@ -239,12 +243,15 @@ func collectStatForOneVolume(vid needle.VolumeId, v *Volume) (s *VolumeInfo) {
 func (s *Store) SetDataCenter(dataCenter string) {
 	s.dataCenter = dataCenter
 }
+
 func (s *Store) SetRack(rack string) {
 	s.rack = rack
 }
+
 func (s *Store) GetDataCenter() string {
 	return s.dataCenter
 }
+
 func (s *Store) GetRack() string {
 	return s.rack
 }
@@ -462,6 +469,7 @@ func (s *Store) ReadVolumeNeedleDataInto(i needle.VolumeId, n *needle.Needle, re
 	}
 	return fmt.Errorf("volume %d not found", i)
 }
+
 func (s *Store) GetVolume(i needle.VolumeId) *Volume {
 	return s.findVolume(i)
 }
