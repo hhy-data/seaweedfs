@@ -83,7 +83,13 @@ func (vc *vidMap) LookupVolumeServerUrl(vid string) (serverUrls []string, err er
 		return nil, fmt.Errorf("volume %d not found", id)
 	}
 	var sameDcServers, otherDcServers []string
+	localUrls := make(map[string]bool)
 	for _, loc := range locations {
+		glog.V(3).Infof("lookup %s => %s, data in remote storage tier: %v", vid, loc.Url, loc.DataInRemote)
+
+		if !loc.DataInRemote {
+			localUrls[loc.Url] = true
+		}
 		if vc.isSameDataCenter(&loc) {
 			sameDcServers = append(sameDcServers, loc.Url)
 		} else {
@@ -93,9 +99,30 @@ func (vc *vidMap) LookupVolumeServerUrl(vid string) (serverUrls []string, err er
 	rand.Shuffle(len(sameDcServers), func(i, j int) {
 		sameDcServers[i], sameDcServers[j] = sameDcServers[j], sameDcServers[i]
 	})
+	if len(localUrls) > 0 && len(localUrls) != len(sameDcServers) {
+		for idx, url := range sameDcServers {
+			// move local url to the front of the list
+			if _, found := localUrls[url]; found {
+				if idx != 0 {
+					sameDcServers[idx], sameDcServers[0] = sameDcServers[0], sameDcServers[idx]
+				}
+				break
+			}
+		}
+	}
 	rand.Shuffle(len(otherDcServers), func(i, j int) {
 		otherDcServers[i], otherDcServers[j] = otherDcServers[j], otherDcServers[i]
 	})
+	if len(localUrls) > 0 && len(localUrls) != len(otherDcServers) {
+		for idx, url := range otherDcServers {
+			if _, found := localUrls[url]; found {
+				if idx != 0 {
+					otherDcServers[idx], otherDcServers[0] = otherDcServers[0], otherDcServers[idx]
+				}
+				break
+			}
+		}
+	}
 	// Prefer same data center
 	serverUrls = append(sameDcServers, otherDcServers...)
 	return

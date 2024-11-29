@@ -31,7 +31,6 @@ type Volume struct {
 	noWriteCanDelete   bool // if readonly, either noWriteOrDelete or noWriteCanDelete
 	noWriteLock        sync.RWMutex
 	hasRemoteFile      bool // if the volume has a remote file
-	dataInRemote       bool // volume has data in remote and not in local
 	MemoryMapMaxSizeMb uint32
 
 	super_block.SuperBlock
@@ -324,6 +323,8 @@ func (v *Volume) ToVolumeInformationMessage() (types.NeedleId, *master_pb.Volume
 		return 0, nil
 	}
 
+	glog.V(2).Infof("volume %d, collection: %s, data in remote: %v", v.Id, v.Collection, v.hasRemoteFile)
+
 	volumeInfo := &master_pb.VolumeInformationMessage{
 		Id:               uint32(v.Id),
 		Size:             uint64(volumeSize),
@@ -338,7 +339,7 @@ func (v *Volume) ToVolumeInformationMessage() (types.NeedleId, *master_pb.Volume
 		CompactRevision:  uint32(v.SuperBlock.CompactionRevision),
 		ModifiedAtSecond: modTime.Unix(),
 		DiskType:         string(v.location.DiskType),
-		RemoteOnly:       v.dataInRemote,
+		RemoteOnly:       v.hasRemoteFile,
 	}
 
 	volumeInfo.RemoteStorageName, volumeInfo.RemoteStorageKey = v.RemoteStorageNameKey()
@@ -367,8 +368,4 @@ func (v *Volume) PersistReadOnly(readOnly bool) {
 	defer v.volumeInfoRWLock.RUnlock()
 	v.volumeInfo.ReadOnly = readOnly
 	v.SaveVolumeInfo()
-}
-
-func (v *Volume) SetRemoteOnly(inRemote bool) {
-	v.dataInRemote = inRemote
 }

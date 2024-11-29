@@ -166,6 +166,7 @@ message VolumeLocation {
   uint32 grpc_port = 7;
   repeated uint32 new_ec_vids = 8;
   repeated uint32 deleted_ec_vids = 9;
+  repeated uint32 remote_vids = 10;
 }
 
 message ClusterNodeUpdate {

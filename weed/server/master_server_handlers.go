@@ -84,7 +84,7 @@ func (ms *MasterServer) findVolumeLocation(collection, vid string) operation.Loo
 					PublicUrl:    loc.PublicUrl,
 					DataCenter:   loc.GetDataCenterId(),
 					GrpcPort:     loc.GrpcPort,
-					DataInRemote: volInfo.DataInRemoteOnly,
+					DataInRemote: volInfo.DataInRemote,
 				})
 			}
 		}

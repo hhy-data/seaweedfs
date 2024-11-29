@@ -15,8 +15,8 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/stats"
 	"github.com/seaweedfs/seaweedfs/weed/util"
-	"github.com/seaweedfs/seaweedfs/weed/wdclient"
 	util_http "github.com/seaweedfs/seaweedfs/weed/util/http"
+	"github.com/seaweedfs/seaweedfs/weed/wdclient"
 )
 
 var getLookupFileIdBackoffSchedule = []time.Duration{
@@ -193,6 +193,9 @@ func ReadAll(buffer []byte, masterClient *wdclient.MasterClient, chunks []*filer
 		if err != nil {
 			glog.V(1).Infof("operation LookupFileId %s failed, err: %v", chunkView.FileId, err)
 			return err
+		}
+		for _, url := range urlStrings {
+			glog.V(1).Infof("fetching chunk: %s from url: %s", chunkView.FileId, url)
 		}
 
 		n, err := util_http.RetriedFetchChunkData(buffer[idx:idx+int(chunkView.ViewSize)], urlStrings, chunkView.CipherKey, chunkView.IsGzipped, chunkView.IsFullChunk(), chunkView.OffsetInChunk)

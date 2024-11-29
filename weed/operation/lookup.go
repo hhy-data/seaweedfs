@@ -53,7 +53,20 @@ func LookupFileId(masterFn GetMasterFn, grpcDialOption grpc.DialOption, fileId s
 	if len(lookup.Locations) == 0 {
 		return "", jwt, errors.New("File Not Found")
 	}
-	return "http://" + lookup.Locations[rand.IntN(len(lookup.Locations))].Url + "/" + fileId, lookup.Jwt, nil
+	var location string
+	var foundLocal bool
+	for _, loc := range lookup.Locations {
+		if !loc.DataInRemote {
+			location = "http://" + loc.Url + "/" + fileId
+			foundLocal = true
+			break
+		}
+	}
+	if !foundLocal {
+		location = "http://" + lookup.Locations[rand.IntN(len(lookup.Locations))].Url + "/" + fileId
+	}
+
+	return location, lookup.Jwt, nil
 }
 
 func LookupVolumeId(masterFn GetMasterFn, grpcDialOption grpc.DialOption, vid string) (*LookupResult, error) {

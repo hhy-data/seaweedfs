@@ -30,10 +30,6 @@ type DiskLocation struct {
 	volumes                map[needle.VolumeId]*Volume
 	volumesLock            sync.RWMutex
 
-	// volumes in remote tier
-	//removeVolumes    map[needle.VolumeId]*Volume
-	//removeVolumeLock sync.RWMutex
-
 	// erasure coding
 	ecVolumes     map[needle.VolumeId]*erasure_coding.EcVolume
 	ecVolumesLock sync.RWMutex
@@ -186,10 +182,6 @@ func (l *DiskLocation) loadExistingVolume(dirEntry os.DirEntry, needleMapKind Ne
 	size, _, _ := v.FileStat()
 	glog.V(0).Infof("data file %s, replication=%s v=%d size=%d ttl=%s",
 		l.Directory+"/"+volumeName+".dat", v.ReplicaPlacement, v.Version(), size, v.Ttl.String())
-
-	if size == 0 && v.HasRemoteFile() {
-		v.SetRemoteOnly(true)
-	}
 
 	return true
 }

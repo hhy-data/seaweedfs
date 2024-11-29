@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
-	"github.com/seaweedfs/seaweedfs/weed/storage/erasure_coding"
-	"golang.org/x/exp/slices"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
+	"github.com/seaweedfs/seaweedfs/weed/storage/erasure_coding"
+	"golang.org/x/exp/slices"
 
 	"io"
 )
@@ -58,13 +59,33 @@ func (c *commandVolumeList) Do(args []string, commandEnv *CommandEnv, writer io.
 		return nil
 	}
 
-	// collect topology information
-	topologyInfo, volumeSizeLimitMb, err := collectTopologyInfo(commandEnv, 0)
-	if err != nil {
-		return err
+	if *c.volumeId > 0 {
+		volumes := []string{}
+		volumes = append(volumes, fmt.Sprintf("%d", *c.volumeId))
+
+		volumeIdLocations, err := lookupVolumeIds(commandEnv, volumes)
+		if err != nil {
+			return err
+		}
+		// print out volume id locations
+		for _, volumeIdLocation := range volumeIdLocations {
+			for _, loc := range volumeIdLocation.Locations {
+				//fmt.Fprintf(writer, "volume id:%d location:%s\n", volumeIdLocation.VolumeOrFileId, loc)
+				fmt.Fprintf(writer, "volume id: %s\n", volumeIdLocation.VolumeOrFileId)
+				output(true, writer, "%+v \n", loc)
+			}
+		}
+	} else {
+		// collect topology information
+		topologyInfo, volumeSizeLimitMb, err := collectTopologyInfo(commandEnv, 0)
+		if err != nil {
+			return err
+		}
+
+		c.writeTopologyInfo(writer, topologyInfo, volumeSizeLimitMb, *verbosityLevel)
+
 	}
 
-	c.writeTopologyInfo(writer, topologyInfo, volumeSizeLimitMb, *verbosityLevel)
 	return nil
 }
 
