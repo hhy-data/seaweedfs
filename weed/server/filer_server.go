@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/stats"
@@ -110,6 +112,11 @@ type FilerServer struct {
 }
 
 func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption) (fs *FilerServer, err error) {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	v := util.GetViper()
 	signingKey := v.GetString("jwt.filer_signing.key")
@@ -150,6 +157,22 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	if len(option.Masters.GetInstances()) == 0 {
 		glog.Fatal("master list is required!")
 	}
+	v.SetDefault("filer.options.max_file_name_length", 255)
+	maxFilenameLength := v.GetUint32("filer.options.max_file_name_length")
+	fs.filer = filer.NewFiler(*option.Masters, fs.grpcDialOption, option.Host, option.FilerGroup, option.Collection, option.DefaultReplication, option.DataCenter, maxFilenameLength, func() {
+		if atomic.LoadInt64(&fs.listenersWaits) > 0 {
+			fs.listenersCond.Broadcast()
+		}
+	})
+	fs.filer.Cipher = option.Cipher
+	// we do not support IP whitelist right now
+	fs.filerGuard = security.NewGuard([]string{}, signingKey, expiresAfterSec, readSigningKey, readExpiresAfterSec)
+	fs.volumeGuard = security.NewGuard([]string{}, volumeSigningKey, volumeExpiresAfterSec, volumeReadSigningKey, volumeReadExpiresAfterSec)
+
+	fs.checkWithMaster()
+
+	go stats.LoopPushingMetric("filer", string(fs.option.Host), fs.metricsAddress, fs.metricsIntervalSec)
+	go fs.filer.KeepMasterClientConnected(ctx)
 
 	if !util.LoadConfiguration("filer", false) {
 		v.SetDefault("leveldb2.enabled", true)
@@ -203,7 +226,7 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 		readonlyMux.HandleFunc("/", fs.filerGuard.WhiteList(requestIDMiddleware(fs.readonlyFilerHandler)))
 	}
 
-	existingNodes := fs.filer.ListExistingPeerUpdates(context.Background())
+	existingNodes := fs.filer.ListExistingPeerUpdates(ctx)
 	startFromTime := time.Now().Add(-filer.LogFlushInterval)
 	if isFresh {
 		glog.V(0).Infof("%s bootstrap from peers %+v", option.Host, existingNodes)
@@ -218,6 +241,9 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	fs.filer.LoadRemoteStorageConfAndMapping()
 
 	grace.OnReload(fs.Reload)
+
+	fs.filer.StartWormAutoCommitControllerInBackground(ctx)
+
 	grace.OnInterrupt(func() {
 		fs.filer.Shutdown()
 	})
