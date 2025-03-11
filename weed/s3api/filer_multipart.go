@@ -5,15 +5,16 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
-	"github.com/seaweedfs/seaweedfs/weed/stats"
-	"golang.org/x/exp/slices"
 	"math"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
+	"github.com/seaweedfs/seaweedfs/weed/stats"
+	"golang.org/x/exp/slices"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -398,43 +399,44 @@ func (s3a *S3ApiServer) listObjectParts(input *s3.ListPartsInput) (output *ListP
 	glog.V(2).Infof("listObjectParts input %v", input)
 
 	output = &ListPartsResult{
-		Bucket:           input.Bucket,
-		Key:              objectKey(input.Key),
-		UploadId:         input.UploadId,
-		MaxParts:         input.MaxParts,         // the maximum number of parts to return.
-		PartNumberMarker: input.PartNumberMarker, // the part number starts after this, exclusive
-		StorageClass:     aws.String("STANDARD"),
+		Bucket:       input.Bucket,
+		Key:          objectKey(input.Key),
+		UploadId:     input.UploadId,
+		MaxParts:     input.MaxParts,
+		StorageClass: aws.String("STANDARD"),
 	}
 
-	entries, isLast, err := s3a.list(s3a.genUploadsFolder(*input.Bucket)+"/"+*input.UploadId, "", fmt.Sprintf("%04d%s", *input.PartNumberMarker, multipartExt), false, uint32(*input.MaxParts))
+	startAfter := ""
+	if input.PartNumberMarker != nil {
+		startAfter = fmt.Sprintf("%04d%s", *input.PartNumberMarker, multipartExt)
+	}
+
+	entries, isLast, err := s3a.list(s3a.genUploadsFolder(*input.Bucket)+"/"+*input.UploadId, "", startAfter, false, uint32(*input.MaxParts))
 	if err != nil {
-		glog.Errorf("listObjectParts %s %s error: %v", *input.Bucket, *input.UploadId, err)
 		return nil, s3err.ErrNoSuchUpload
 	}
 
-	// Note: The upload directory is sort of a marker of the existence of an multipart upload request.
-	// So can not just delete empty upload folders.
-
-	output.IsTruncated = aws.Bool(!isLast)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
 
 	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name, multipartExt) && !entry.IsDirectory {
-			partNumber, err := parsePartNumber(entry.Name)
-			if err != nil {
-				glog.Errorf("listObjectParts %s %s parse %s: %v", *input.Bucket, *input.UploadId, entry.Name, err)
-				continue
-			}
-			output.Part = append(output.Part, &s3.Part{
-				PartNumber:   aws.Int64(int64(partNumber)),
-				LastModified: aws.Time(time.Unix(entry.Attributes.Mtime, 0).UTC()),
-				Size:         aws.Int64(int64(filer.FileSize(entry))),
-				ETag:         aws.String("\"" + filer.ETag(entry) + "\""),
-			})
-			if !isLast {
-				output.NextPartNumberMarker = aws.Int64(int64(partNumber))
-			}
+		partNumber, err := parsePartNumber(entry.Name)
+		if err != nil {
+			glog.Errorf("listObjectParts %s %s parse %s: %v", *input.Bucket, *input.UploadId, entry.Name, err)
+			continue
 		}
+		output.Part = append(output.Part, &s3.Part{
+			PartNumber:   aws.Int64(int64(partNumber)),
+			LastModified: aws.Time(time.Unix(entry.Attributes.Mtime, 0).UTC()),
+			Size:         aws.Int64(int64(filer.FileSize(entry))),
+			ETag:         aws.String("\"" + filer.ETag(entry) + "\""),
+		})
 	}
 
+	output.IsTruncated = aws.Bool(!isLast)
+	if *output.IsTruncated {
+		output.NextPartNumberMarker = output.Part[len(output.Part)-1].PartNumber
+	}
 	return
 }

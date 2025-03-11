@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil"
-	"github.com/gorilla/mux"
-	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil"
+	"github.com/gorilla/mux"
+	"github.com/seaweedfs/seaweedfs/weed/glog"
 )
 
 type mimeType string

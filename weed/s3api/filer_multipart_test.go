@@ -1,12 +1,13 @@
 package s3api
 
 import (
+	"testing"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestInitiateMultipartUploadResult(t *testing.T) {
@@ -47,7 +48,6 @@ func TestListPartsResult(t *testing.T) {
 	if encoded != expected {
 		t.Errorf("unexpected output: %s\nexpecting:%s", encoded, expected)
 	}
-
 }
 
 func Test_parsePartNumber(t *testing.T) {
