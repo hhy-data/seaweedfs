@@ -100,3 +100,11 @@ filer_rocksdb:
         --build-arg LDFLAGS=${LDFLAGS} \
         --build-arg GOPROXY=${GOPROXY} \
         --push .
+
+filer_migrate_tool:
+	docker buildx build --platform linux/amd64,linux/arm64 \
+        ${TAG_FLAGS} \
+        -f tools/filer_store_migrate/rocksdb_migrate_tikv/Dockerfile \
+        --build-arg LDFLAGS=${LDFLAGS} \
+        --build-arg GOPROXY=${GOPROXY} \
+        --push .
