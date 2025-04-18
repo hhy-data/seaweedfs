@@ -46,7 +46,7 @@ func newBackendStorage(configuration backend.StringProperties, configPrefix stri
 	grpcServer := configuration.GetString(configPrefix + "grpc_server")
 	readDisabled, _ := strconv.ParseBool(configuration.GetString(configPrefix + "read_disabled"))
 
-	cl, err := NewClient(grpcServer, readDisabled)
+	cl, err := NewClient(grpcServer)
 	if err != nil {
 		return nil, err
 	}
