@@ -85,7 +85,7 @@ func (s *BackendStorage) CopyFile(f *os.File, _ func(progressed int64, percentag
 		return
 	}
 
-	key = fmt.Sprintf("%s%s%s", f.Name(), separator, string(superblock))
+	key = generateFileKey(f.Name(), superblock)
 
 	glog.V(1).Infof("copying dat file of %s to remote udm.%s as %s", f.Name(), s.id, key)
 
@@ -124,7 +124,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	length := len(p)
 	var data []byte
 	if isSuperBlock(off, length) {
-		data = []byte(strings.SplitN(f.key, separator, 2)[1])
+		_, data = getPathAndSuperBlockFromKey(f.key)
 	} else {
 		if f.readDisabled {
 			return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
@@ -224,9 +224,18 @@ func moveFileFromInternalCache(path string) (int64, error) {
 	return fileInfo.Size(), nil
 }
 
-func deleteFileInInternalCache(key string) error {
+func generateFileKey(path string, superBlock []byte) string {
+	return fmt.Sprintf("%s%s%s", path, separator, string(superBlock))
+}
+
+func getPathAndSuperBlockFromKey(key string) (string, []byte) {
 	path := strings.SplitN(key, separator, 2)
-	cacheFile := buildInternalCacheFilePath(path[0])
+	return path[0], []byte(path[1])
+}
+
+func deleteFileInInternalCache(key string) error {
+	path, _ := getPathAndSuperBlockFromKey(key)
+	cacheFile := buildInternalCacheFilePath(path)
 	return os.Remove(cacheFile)
 }
 
