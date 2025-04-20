@@ -1,7 +1,9 @@
 package udm
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -125,24 +127,57 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	var data []byte
 	if isSuperBlock(off, length) {
 		_, data = getPathAndSuperBlockFromKey(f.key)
-	} else {
-		if f.readDisabled {
-			return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
-		}
-
-		// TODO: download to cache and read
+		copy(p, data)
+		return length, nil
 	}
 
-	n = len(data)
+	if f.readDisabled {
+		return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
+	}
 
-	copy(p, data)
-	if length > n {
-		for i := n; i < length; i++ {
+	path, _ := getPathAndSuperBlockFromKey(f.key)
+	cacheFile := buildInternalCacheFilePath(path)
+	_, err = os.Stat(cacheFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			glog.V(1).Infof("file %s does not exist in cache, downloading from remote", path)
+			err = f.downloadFile(cacheFile, path)
+			if err != nil {
+				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
+			}
+		} else {
+			return 0, fmt.Errorf("failed to stat file %s, err: %w", path, err)
+		}
+	}
+
+	return f.readAtInternalCache(cacheFile, p, off)
+}
+
+func (f *backendStorageFile) readAtInternalCache(path string, p []byte, off int64) (n int, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+
+	defer f.Close()
+
+	n, err = file.ReadAt(p, off)
+	if err == io.EOF {
+		err = nil
+	}
+
+	// p might be reused by previous call
+	if len(p) > n {
+		for i := n; i < len(p); i++ {
 			p[i] = 0
 		}
 	}
 
-	return n, nil
+	return
+}
+
+func (f *backendStorageFile) downloadFile(cacheFile, path string) error {
+	return f.backendStorage.client.DownloadFile(context.TODO(), cacheFile, filepath.Base(path))
 }
 
 func (f *backendStorageFile) WriteAt(p []byte, off int64) (n int, err error) {
