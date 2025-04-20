@@ -61,14 +61,14 @@ func (cs *ClientSet) Close() error {
 //	return err
 //}
 
-func (cs *ClientSet) DownloadFile(ctx context.Context, targetPath, volumeShortName string) (err error) {
+func (cs *ClientSet) DownloadFileFromTape(ctx context.Context, targetPath, volumeShortName string) (err error) {
 	defer func() {
 		if err != nil {
 			_ = os.Remove(targetPath)
 		}
 	}()
 
-	rc, err := cs.downloadFile(ctx, strings.TrimSuffix(volumeShortName, filepath.Ext(volumeShortName)), 0, pb.CheckSumAlgorithm_md5)
+	rc, err := cs.downFromTape(ctx, strings.TrimSuffix(volumeShortName, filepath.Ext(volumeShortName)), 0, pb.CheckSumAlgorithm_md5)
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
 	}
@@ -118,7 +118,7 @@ type downloadStream struct {
 	checksum string
 }
 
-func (cs *ClientSet) downloadFile(ctx context.Context, key string, chunkSize uint64, checksumAlg pb.CheckSumAlgorithm) (ReaderWithChecksum, error) {
+func (cs *ClientSet) downFromTape(ctx context.Context, key string, chunkSize uint64, checksumAlg pb.CheckSumAlgorithm) (ReaderWithChecksum, error) {
 	stream, err := cs.tapeIOClient.DownFromTape(ctx, &pb.DownFromTapeRequest{
 		Id:          key,
 		ChunkSize:   chunkSize,
