@@ -143,6 +143,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 			glog.V(1).Infof("file %s does not exist in cache, downloading from remote", path)
 			err = f.downloadFile(cacheFile, path)
 			if err != nil {
+				glog.V(1).Infof("failed to download file %s, err: %v", path, err)
 				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
 			}
 		} else {

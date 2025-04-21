@@ -8,15 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/seaweedfs/seaweedfs/weed/storage/backend/udm/util"
 	"github.com/seaweedfs/seaweedfs/weed/storage/backend/udm/util/hash"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/seaweedfs/seaweedfs/weed/storage/backend/udm/api/private/v1"
-)
-
-const (
-	HeaderChecksum = "x-checksum"
 )
 
 type ClientSet struct {
@@ -68,7 +65,7 @@ func (cs *ClientSet) DownloadFileFromTape(ctx context.Context, targetPath, volum
 		}
 	}()
 
-	rc, err := cs.downFromTape(ctx, strings.TrimSuffix(volumeShortName, filepath.Ext(volumeShortName)), 0, pb.CheckSumAlgorithm_md5)
+	rc, err := cs.downloadFromTape(ctx, strings.TrimSuffix(volumeShortName, filepath.Ext(volumeShortName)), 0, pb.CheckSumAlgorithm_md5)
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
 	}
@@ -107,19 +104,8 @@ func (cs *ClientSet) DownloadFileFromTape(ctx context.Context, targetPath, volum
 	return nil
 }
 
-type ReaderWithChecksum interface {
-	io.Reader
-	Checksum() string
-}
-
-type downloadStream struct {
-	stream   grpc.ServerStreamingClient[pb.DownloadFileResponse]
-	buffer   []byte
-	checksum string
-}
-
-func (cs *ClientSet) downFromTape(ctx context.Context, key string, chunkSize uint64, checksumAlg pb.CheckSumAlgorithm) (ReaderWithChecksum, error) {
-	stream, err := cs.tapeIOClient.DownFromTape(ctx, &pb.DownFromTapeRequest{
+func (cs *ClientSet) downloadFromTape(ctx context.Context, key string, chunkSize uint64, checksumAlg pb.CheckSumAlgorithm) (util.ReaderWithChecksum, error) {
+	stream, err := cs.tapeIOClient.DownloadFromTape(ctx, &pb.DownloadFromTapeRequest{
 		Id:          key,
 		ChunkSize:   chunkSize,
 		ChecksumAlg: checksumAlg,
@@ -128,38 +114,7 @@ func (cs *ClientSet) downFromTape(ctx context.Context, key string, chunkSize uin
 		return nil, err
 	}
 
-	return &downloadStream{
-		stream: stream,
+	return &util.FileStream{
+		Stream: stream,
 	}, nil
-}
-
-func (d *downloadStream) Read(p []byte) (n int, err error) {
-	if d.stream == nil {
-		return 0, io.EOF
-	}
-	if len(p) == 0 {
-		return 0, nil
-	}
-
-	if len(d.buffer) == 0 {
-		resp, err := d.stream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				ts := d.stream.Trailer()
-				if ts != nil && len(ts[HeaderChecksum]) > 0 {
-					d.checksum = ts[HeaderChecksum][0]
-				}
-			}
-			d.stream = nil
-			return 0, err
-		}
-		d.buffer = resp.Data
-	}
-	n = copy(p, d.buffer)
-	d.buffer = d.buffer[n:]
-	return n, nil
-}
-
-func (d *downloadStream) Checksum() string {
-	return d.checksum
 }
