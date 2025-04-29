@@ -9,6 +9,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
 func (wfs *WFS) GetAttr(cancel <-chan struct{}, input *fuse.GetAttrIn, out *fuse.AttrOut) (code fuse.Status) {
@@ -93,6 +94,11 @@ func (wfs *WFS) SetAttr(cancel <-chan struct{}, input *fuse.SetAttrIn, out *fuse
 		// commit the file to worm when it is set to readonly at the first time
 		if entry.WormEnforcedAtTsNs == 0 && wormEnabled && !hasWritePermission(mode) {
 			entry.WormEnforcedAtTsNs = time.Now().UnixNano()
+
+			status = wfs.commitFileAncestorsToWorm(string(path))
+			if status != fuse.OK {
+				return status
+			}
 		}
 
 		// glog.V(4).Infof("setAttr mode %o", mode)
@@ -138,6 +144,31 @@ func (wfs *WFS) SetAttr(cancel <-chan struct{}, input *fuse.SetAttrIn, out *fuse
 
 	return wfs.saveEntry(path, entry)
 
+}
+
+func (wfs *WFS) commitFileAncestorsToWorm(path string) fuse.Status {
+	for path != wfs.option.FilerMountRootPath {
+		// get parent dir
+		path, _ = util.FullPath(path).DirAndName()
+		entry, status := wfs.maybeLoadEntry(util.FullPath(path))
+		if status != fuse.OK {
+			return status
+		}
+
+		wormEnforced, wormEnabled := wfs.wormEnforcedForEntry(util.FullPath(path), entry)
+		if wormEnforced {
+			return fuse.OK
+		} else if wormEnabled {
+			// worm is enabled but not enforced yet
+			entry.WormEnforcedAtTsNs = time.Now().UnixNano()
+			status = wfs.saveEntry(util.FullPath(path), entry)
+			if status != fuse.OK {
+				return status
+			}
+		}
+	}
+
+	return fuse.OK
 }
 
 func (wfs *WFS) setRootAttr(out *fuse.AttrOut) {
