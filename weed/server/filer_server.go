@@ -153,6 +153,7 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	}
 	v.SetDefault("filer.options.max_file_name_length", 255)
 	maxFilenameLength := v.GetUint32("filer.options.max_file_name_length")
+	glog.V(0).Infof("max_file_name_length: %d", maxFilenameLength)
 	fs.filer = filer.NewFiler(*option.Masters, fs.grpcDialOption, option.Host, option.FilerGroup, option.Collection, option.DefaultReplication, option.DataCenter, maxFilenameLength, func() {
 		if atomic.LoadInt64(&fs.listenersWaits) > 0 {
 			fs.listenersCond.Broadcast()
