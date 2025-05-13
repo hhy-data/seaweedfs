@@ -56,7 +56,8 @@ func newBackendStorage(configuration backend.StringProperties, configPrefix stri
 
 func (s *BackendStorage) ToProperties() map[string]string {
 	return map[string]string{
-		"grpc_server": s.grpcServer,
+		"grpc_server":   s.grpcServer,
+		"read_disabled": strconv.FormatBool(s.readDisabled),
 	}
 }
 
