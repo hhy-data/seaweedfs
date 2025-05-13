@@ -157,22 +157,6 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	if len(option.Masters.GetInstances()) == 0 {
 		glog.Fatal("master list is required!")
 	}
-	v.SetDefault("filer.options.max_file_name_length", 255)
-	maxFilenameLength := v.GetUint32("filer.options.max_file_name_length")
-	fs.filer = filer.NewFiler(*option.Masters, fs.grpcDialOption, option.Host, option.FilerGroup, option.Collection, option.DefaultReplication, option.DataCenter, maxFilenameLength, func() {
-		if atomic.LoadInt64(&fs.listenersWaits) > 0 {
-			fs.listenersCond.Broadcast()
-		}
-	})
-	fs.filer.Cipher = option.Cipher
-	// we do not support IP whitelist right now
-	fs.filerGuard = security.NewGuard([]string{}, signingKey, expiresAfterSec, readSigningKey, readExpiresAfterSec)
-	fs.volumeGuard = security.NewGuard([]string{}, volumeSigningKey, volumeExpiresAfterSec, volumeReadSigningKey, volumeReadExpiresAfterSec)
-
-	fs.checkWithMaster()
-
-	go stats.LoopPushingMetric("filer", string(fs.option.Host), fs.metricsAddress, fs.metricsIntervalSec)
-	go fs.filer.KeepMasterClientConnected(ctx)
 
 	if !util.LoadConfiguration("filer", false) {
 		v.SetDefault("leveldb2.enabled", true)
