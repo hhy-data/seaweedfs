@@ -200,6 +200,7 @@ func (vl *VolumeLayout) UnRegisterVolume(v *storage.VolumeInfo, dn *DataNode) {
 
 	if location.Remove(dn) {
 
+		glog.V(0).Infof("volume %d removed from %s len %d copy %d", v.Id, dn.Id(), location.Length(), v.ReplicaPlacement.GetCopyCount())
 		vl.readonlyVolumes.Remove(v.Id, dn)
 		vl.oversizedVolumes.Remove(v.Id, dn)
 		vl.ensureCorrectWritables(v.Id)
@@ -491,6 +492,7 @@ func (vl *VolumeLayout) SetVolumeAvailable(dn *DataNode, vid needle.VolumeId, is
 func (vl *VolumeLayout) enoughCopies(vid needle.VolumeId) bool {
 	locations := vl.vid2location[vid].Length()
 	desired := vl.rp.GetCopyCount()
+	glog.V(0).Infof("volume %d has %d copies, need %d", vid, locations, desired)
 	return locations == desired || (vl.replicationAsMin && locations > desired)
 }
 
