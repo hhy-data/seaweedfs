@@ -5,15 +5,16 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
-	"github.com/seaweedfs/seaweedfs/weed/stats"
-	"golang.org/x/exp/slices"
 	"math"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
+	"github.com/seaweedfs/seaweedfs/weed/stats"
+	"golang.org/x/exp/slices"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -93,7 +94,8 @@ func (s3a *S3ApiServer) completeMultipartUpload(input *s3.CompleteMultipartUploa
 	sort.Ints(completedPartNumbers)
 
 	uploadDirectory := s3a.genUploadsFolder(*input.Bucket) + "/" + *input.UploadId
-	entries, _, err := s3a.list(uploadDirectory, "", "", false, maxPartsList)
+	//entries, _, err := s3a.list(uploadDirectory, "", "", false, maxPartsList)
+	entries, _, err := s3a.list(uploadDirectory, "", "", false, 0)
 	if err != nil {
 		glog.Errorf("completeMultipartUpload %s %s error: %v, entries:%d", *input.Bucket, *input.UploadId, err, len(entries))
 		stats.S3HandlerCounter.WithLabelValues(stats.ErrorCompletedNoSuchUpload).Inc()
@@ -252,7 +254,7 @@ func (s3a *S3ApiServer) completeMultipartUpload(input *s3.CompleteMultipartUploa
 
 	for _, deleteEntry := range deleteEntries {
 		//delete unused part data
-		glog.Infof("completeMultipartUpload cleanup %s upload %s unused %s", *input.Bucket, *input.UploadId, deleteEntry.Name)
+		glog.V(1).Infof("completeMultipartUpload cleanup %s upload %s unused %s", *input.Bucket, *input.UploadId, deleteEntry.Name)
 		if err = s3a.rm(uploadDirectory, deleteEntry.Name, true, true); err != nil {
 			glog.Warningf("completeMultipartUpload cleanup %s upload %s unused %s : %v", *input.Bucket, *input.UploadId, deleteEntry.Name, err)
 		}
