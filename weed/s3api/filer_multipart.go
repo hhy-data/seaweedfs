@@ -5,9 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
-	"github.com/seaweedfs/seaweedfs/weed/stats"
-	"golang.org/x/exp/slices"
 	"math"
 	"path/filepath"
 	"sort"
@@ -18,11 +15,14 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/google/uuid"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
+	"golang.org/x/exp/slices"
 
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
+	"github.com/seaweedfs/seaweedfs/weed/stats"
 )
 
 const (
@@ -93,7 +93,7 @@ func (s3a *S3ApiServer) completeMultipartUpload(input *s3.CompleteMultipartUploa
 	sort.Ints(completedPartNumbers)
 
 	uploadDirectory := s3a.genUploadsFolder(*input.Bucket) + "/" + *input.UploadId
-	entries, _, err := s3a.list(uploadDirectory, "", "", false, maxPartsList)
+	entries, _, err := s3a.list(uploadDirectory, "", "", false, 0)
 	if err != nil {
 		glog.Errorf("completeMultipartUpload %s %s error: %v, entries:%d", *input.Bucket, *input.UploadId, err, len(entries))
 		stats.S3HandlerCounter.WithLabelValues(stats.ErrorCompletedNoSuchUpload).Inc()
