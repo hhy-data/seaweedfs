@@ -224,13 +224,22 @@ func moveFileToInternalCache(path string) (superBlock []byte, size int64, err er
 				glog.V(1).Infof("Failed to rename file from %s to %s, err: %s", path, cacheFile, err)
 				return nil, 0, err
 			}
+
+			fileInfo, err = os.Stat(cacheFile)
+			if err != nil {
+				glog.V(1).Infof("Can not stat file after rename %s", cacheFile)
+				return nil, 0, err
+			}
+
+			size = fileInfo.Size()
 		} else {
 			glog.V(1).Infof("Can not stat file %s", cacheFile)
 			return nil, 0, err
 		}
+	} else {
+		size = fileInfo.Size()
 	}
 
-	size = fileInfo.Size()
 	superBlock, err = readSuperBlock(cacheFile)
 	if err != nil {
 		glog.V(1).Infof("Failed to read super block for file %s, err: %s", cacheFile, err)
