@@ -138,7 +138,7 @@ func (s3a *S3ApiServer) listFilerEntries(bucket string, originalPrefix string, m
 	if requestDir != "" {
 		reqDir = fmt.Sprintf("%s%s", bucketPrefix, requestDir)
 	}
-	glog.Infof("list entries start, requestDir, prefix, marker, delimiter: %s, %s, %s, %s", reqDir, prefix, marker, delimiter)
+	glog.Infof("list entries start, requestDir: %s, prefix: %s, marker: %s, delimiter: %s", reqDir, prefix, marker, delimiter)
 
 	var contents []ListEntry
 	var commonPrefixes []PrefixEntry
@@ -153,7 +153,7 @@ func (s3a *S3ApiServer) listFilerEntries(bucket string, originalPrefix string, m
 	err = s3a.WithFilerClient(false, func(client filer_pb.SeaweedFilerClient) error {
 		for {
 			empty := true
-			nextMarker, doErr = s3a.doListFilerEntries(client, reqDir, prefix, cursor, marker, delimiter, false, func(dir string, entry *filer_pb.Entry) {
+			nextMarker, doErr = s3a.doListFilerEntries(client, reqDir, prefix, cursor, marker, delimiter, true, func(dir string, entry *filer_pb.Entry) {
 				empty = false
 				dirName, entryName, prefixName := entryUrlEncode(dir, entry.Name, encodingTypeUrl)
 				if entry.IsDirectory {
@@ -423,7 +423,7 @@ func (s3a *S3ApiServer) doListFilerEntries(client filer_pb.SeaweedFilerClient, d
 			}
 		} else {
 			eachEntryFn(dir, entry)
-			glog.V(4).Infof("List File Entries %s, file: %s, maxKeys %d", dir, entry.Name, cursor.maxKeys)
+			glog.V(0).Infof("List File Entries %s, file: %s, maxKeys %d", dir, entry.Name, cursor.maxKeys)
 		}
 		if cursor.prefixEndsOnDelimiter {
 			cursor.prefixEndsOnDelimiter = false

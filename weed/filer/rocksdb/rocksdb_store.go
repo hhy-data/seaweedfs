@@ -101,7 +101,7 @@ func (store *RocksDBStore) InsertEntry(ctx context.Context, entry *filer.Entry) 
 	if err != nil {
 		return fmt.Errorf("encoding %s %+v: %v", entry.FullPath, entry.Attr, err)
 	}
-	glog.Infof("create entry, dir, name, key: %s, %s, %s, %x, %x", dir, name, key)
+	glog.Infof("create entry, dir: %s, name: %s, key: %x", dir, name, key)
 
 	err = store.db.Put(store.wo, key, value)
 
