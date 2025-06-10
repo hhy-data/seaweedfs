@@ -198,6 +198,7 @@ func (store *LevelDB2Store) ListDirectoryPrefixedEntries(ctx context.Context, di
 		if fileName == "" {
 			continue
 		}
+		fmt.Printf("fileName: %s, startFileName: %s, includeStartFile: %v\n", fileName, startFileName, includeStartFile)
 		if fileName == startFileName && !includeStartFile {
 			continue
 		}

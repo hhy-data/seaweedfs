@@ -2,8 +2,9 @@ package leveldb
 
 import (
 	"context"
-	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"testing"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb"
 
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/util"
@@ -80,6 +81,63 @@ func TestEmptyRoot(t *testing.T) {
 	if len(entries) != 0 {
 		t.Errorf("list entries count: %v", len(entries))
 		return
+	}
+
+}
+
+func TestListDirectoryWithPrefix(t *testing.T) {
+	testFiler := filer.NewFiler(pb.ServerDiscovery{}, nil, "", "", "", "", "", 255, nil)
+	//dir := t.TempDir()
+	dir := t.TempDir()
+	store := &LevelDB2Store{}
+	store.initialize(dir, 2)
+	testFiler.SetStore(store)
+
+	ctx := context.Background()
+
+	//basePath := util.FullPath("/bucket1/test-prefix1")
+	files := []string{
+		"test-prefix1/file1.txt",
+		"test-prefix1/file2.txt",
+		"test-prefix1-extra.txt", // Should match prefix=test-prefix1, not test-prefix1/
+	}
+
+	// Create test entries
+	for _, file := range files {
+		fullpath := util.FullPath("/bucket1/" + file)
+		entry := &filer.Entry{
+			FullPath: fullpath,
+			Attr: filer.Attr{
+				Mode: 0644,
+				Uid:  1,
+				Gid:  1,
+			},
+		}
+		if err := testFiler.CreateEntry(ctx, entry, false, false, nil, false, testFiler.MaxFilenameLength); err != nil {
+			t.Fatalf("Failed to create entry %s: %v", fullpath, err)
+		}
+	}
+
+	prefix1 := "test-prefix1"
+	entries1, _, err := testFiler.ListDirectoryEntries(ctx, util.FullPath("/bucket1"), "", false, 100, prefix1, "", "")
+	if err != nil {
+		t.Fatalf("Failed to list entries with prefix %s: %v", prefix1, err)
+	}
+	if len(entries1) != 2 {
+		t.Errorf("Expected 2 entries with prefix %s, got %d", prefix1, len(entries1))
+	} else {
+		t.Logf("Found %d entries with prefix %s", len(entries1), prefix1)
+	}
+	for _, entry := range entries1 {
+		t.Logf("Entry: %s", entry.FullPath)
+	}
+	entries11, _, err := testFiler.ListDirectoryEntries(ctx, util.FullPath("/bucket1/test-prefix1"), "", false, 100, "", "", "")
+	if err != nil {
+		t.Fatalf("Failed to list entries with prefix %s: %v", prefix1, err)
+	}
+	t.Logf("Entry 11 len: %d", len(entries11))
+	for _, entry := range entries11 {
+		t.Logf("Entry: %s", entry.FullPath)
 	}
 
 }
