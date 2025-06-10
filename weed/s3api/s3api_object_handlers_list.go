@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/seaweedfs/seaweedfs/weed/glog"
-	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/seaweedfs/seaweedfs/weed/glog"
+	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
 )
 
 type OptionalString struct {
@@ -137,6 +138,7 @@ func (s3a *S3ApiServer) listFilerEntries(bucket string, originalPrefix string, m
 	if requestDir != "" {
 		reqDir = fmt.Sprintf("%s%s", bucketPrefix, requestDir)
 	}
+	glog.Infof("list entries start, requestDir, prefix, marker, delimiter: %s, %s, %s, %s", reqDir, prefix, marker, delimiter)
 
 	var contents []ListEntry
 	var commonPrefixes []PrefixEntry
@@ -312,7 +314,7 @@ func (s3a *S3ApiServer) doListFilerEntries(client filer_pb.SeaweedFilerClient, d
 	// invariants
 	//   prefix and marker should be under dir, marker may contain "/"
 	//   maxKeys should be updated for each recursion
-	// glog.V(4).Infof("doListFilerEntries dir: %s, prefix: %s, marker %s, maxKeys: %d, prefixEndsOnDelimiter: %+v", dir, prefix, marker, cursor.maxKeys, cursor.prefixEndsOnDelimiter)
+	glog.V(0).Infof("doListFilerEntries dir: %s, prefix: %s, marker %s, maxKeys: %d, prefixEndsOnDelimiter: %+v", dir, prefix, marker, cursor.maxKeys, cursor.prefixEndsOnDelimiter)
 	if prefix == "/" && delimiter == "/" {
 		return
 	}
@@ -323,6 +325,7 @@ func (s3a *S3ApiServer) doListFilerEntries(client filer_pb.SeaweedFilerClient, d
 	if strings.Contains(marker, "/") {
 		subDir, subMarker := toParentAndDescendants(marker)
 		// println("doListFilerEntries dir", dir+"/"+subDir, "subMarker", subMarker)
+		glog.V(0).Infof("doListFilerEntries subDir: %s, subMarker: %s", subDir, subMarker)
 		subNextMarker, subErr := s3a.doListFilerEntries(client, dir+"/"+subDir, "", cursor, subMarker, delimiter, false, eachEntryFn)
 		if subErr != nil {
 			err = subErr
@@ -382,7 +385,7 @@ func (s3a *S3ApiServer) doListFilerEntries(client filer_pb.SeaweedFilerClient, d
 			}
 		}
 		if entry.IsDirectory {
-			// glog.V(4).Infof("List Dir Entries %s, file: %s, maxKeys %d", dir, entry.Name, cursor.maxKeys)
+			glog.V(4).Infof("List Dir Entries %s, file: %s, maxKeys %d", dir, entry.Name, cursor.maxKeys)
 			if entry.Name == s3_constants.MultipartUploadsFolder { // FIXME no need to apply to all directories. this extra also affects maxKeys
 				continue
 			}
@@ -401,6 +404,7 @@ func (s3a *S3ApiServer) doListFilerEntries(client filer_pb.SeaweedFilerClient, d
 					return
 				}
 				// println("doListFilerEntries2 dir", dir+"/"+entry.Name, "subNextMarker", subNextMarker)
+				glog.V(0).Infof("doListFilerEntries2 subNextMarker, subdir: %s, %s", subNextMarker, dir+"/"+entry.Name)
 				nextMarker = entry.Name + "/" + subNextMarker
 				if cursor.isTruncated {
 					return
@@ -419,7 +423,7 @@ func (s3a *S3ApiServer) doListFilerEntries(client filer_pb.SeaweedFilerClient, d
 			}
 		} else {
 			eachEntryFn(dir, entry)
-			// glog.V(4).Infof("List File Entries %s, file: %s, maxKeys %d", dir, entry.Name, cursor.maxKeys)
+			glog.V(4).Infof("List File Entries %s, file: %s, maxKeys %d", dir, entry.Name, cursor.maxKeys)
 		}
 		if cursor.prefixEndsOnDelimiter {
 			cursor.prefixEndsOnDelimiter = false

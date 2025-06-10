@@ -101,6 +101,7 @@ func (store *RocksDBStore) InsertEntry(ctx context.Context, entry *filer.Entry) 
 	if err != nil {
 		return fmt.Errorf("encoding %s %+v: %v", entry.FullPath, entry.Attr, err)
 	}
+	glog.Infof("create entry, dir, name, key: %s, %s, %s, %x, %x", dir, name, key)
 
 	err = store.db.Put(store.wo, key, value)
 
@@ -251,6 +252,7 @@ func (store *RocksDBStore) ListDirectoryPrefixedEntries(ctx context.Context, dir
 	defer iter.Close()
 	err = enumerate(iter, directoryPrefix, lastFileStart, includeStartFile, limit, func(key, value []byte) bool {
 		fileName := getNameFromKey(key)
+		glog.Infof("list entry, dirPath, fileName, key: %s, %s, %s, %x", dirPath, fileName, key)
 		if fileName == "" {
 			return true
 		}
