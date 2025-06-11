@@ -189,10 +189,14 @@ func (store *RocksDBStore) DeleteFolderChildren(ctx context.Context, fullpath we
 
 func enumerate(iter *gorocksdb.Iterator, prefix, lastKey []byte, includeLastKey bool, limit int64, startFileName string, fn func(key, value []byte) bool) (err error) {
 
-	iter.Seek(prefix)
+	if len(lastKey) == 0 {
+		iter.Seek(prefix)
+	} else {
+		iter.Seek(lastKey)
+	}
 
 	i := int64(0)
-	for ; iter.Valid(); iter.Next() {
+	for iter.Valid() {
 
 		if limit > 0 {
 			i++
@@ -209,9 +213,11 @@ func enumerate(iter *gorocksdb.Iterator, prefix, lastKey []byte, includeLastKey 
 
 		fileName := getNameFromKey(key)
 		if fileName == "" {
+			iter.Next()
 			continue
 		}
 		if fileName == startFileName && !includeLastKey {
+			iter.Next()
 			continue
 		}
 
@@ -221,6 +227,7 @@ func enumerate(iter *gorocksdb.Iterator, prefix, lastKey []byte, includeLastKey 
 			break
 		}
 
+		iter.Next()
 	}
 
 	if err := iter.Err(); err != nil {
