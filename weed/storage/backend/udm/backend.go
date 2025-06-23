@@ -53,7 +53,7 @@ func newBackendStorage(configuration backend.StringProperties, configPrefix stri
 		return nil, err
 	}
 
-	glog.V(1).Infof("Adding backend storage: %s.%s", storageType, id)
+	glog.V(0).Infof("Adding backend storage: %s.%s", storageType, id)
 
 	return &BackendStorage{
 		id:           id,
@@ -84,13 +84,13 @@ func (s *BackendStorage) NewStorageFile(key string, tierInfo *volume_server_pb.V
 func (s *BackendStorage) CopyFile(f *os.File, _ func(progressed int64, percentage float32) error) (key string, size int64, err error) {
 	superblock, size, err := moveFileToInternalCache(f.Name())
 	if err != nil {
-		glog.V(1).Infof("failed to copy file: %v", err)
+		glog.V(0).Infof("failed to copy file: %v", err)
 		return
 	}
 
 	key = generateFileKey(f.Name(), superblock)
 
-	glog.V(1).Infof("copying dat file of %s to remote udm.%s as %s", f.Name(), s.id, key)
+	glog.V(0).Infof("copying dat file of %s to remote udm.%s as %s", f.Name(), s.id, key)
 
 	return
 }
@@ -98,18 +98,18 @@ func (s *BackendStorage) CopyFile(f *os.File, _ func(progressed int64, percentag
 func (s *BackendStorage) DownloadFile(fileName string, key string, _ func(progressed int64, percentage float32) error) (size int64, err error) {
 	size, err = moveFileFromInternalCache(fileName)
 	if err != nil {
-		glog.V(1).Infof("failed to download file: %v", err)
+		glog.V(0).Infof("failed to download file: %v", err)
 		return
 	}
 
-	glog.V(1).Infof("download dat file of %s from remote udm.%s as %s", fileName, s.id, key)
+	glog.V(0).Infof("download dat file of %s from remote udm.%s as %s", fileName, s.id, key)
 
 	return
 }
 
 func (s *BackendStorage) DeleteFile(key string) (err error) {
 
-	glog.V(1).Infof("delete dat file %s from remote", key)
+	glog.V(0).Infof("delete dat file %s from remote", key)
 
 	_ = deleteFileInInternalCache(key)
 
@@ -141,10 +141,10 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	_, err = os.Stat(cacheFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			glog.V(1).Infof("file %s does not exist in cache, downloading from remote", path)
+			glog.V(0).Infof("file %s does not exist in cache, downloading from remote", path)
 			err = f.downloadFile(cacheFile, path)
 			if err != nil {
-				glog.V(1).Infof("failed to download file %s, err: %v", path, err)
+				glog.V(0).Infof("failed to download file %s, err: %v", path, err)
 				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
 			}
 		} else {
@@ -212,7 +212,7 @@ func moveFileToInternalCache(path string) (superBlock []byte, size int64, err er
 	cacheFile := buildInternalCacheFilePath(path)
 	err = os.MkdirAll(filepath.Dir(cacheFile), 0777)
 	if err != nil {
-		glog.V(1).Infof("Failed to create cache dir for file %s, err: %v", cacheFile, err)
+		glog.V(0).Infof("Failed to create cache dir for file %s, err: %v", cacheFile, err)
 		return nil, 0, err
 	}
 
@@ -221,19 +221,19 @@ func moveFileToInternalCache(path string) (superBlock []byte, size int64, err er
 		if os.IsNotExist(err) {
 			err = os.Rename(path, cacheFile)
 			if err != nil {
-				glog.V(1).Infof("Failed to rename file from %s to %s, err: %s", path, cacheFile, err)
+				glog.V(0).Infof("Failed to rename file from %s to %s, err: %s", path, cacheFile, err)
 				return nil, 0, err
 			}
 
 			fileInfo, err = os.Stat(cacheFile)
 			if err != nil {
-				glog.V(1).Infof("Can not stat file after rename %s", cacheFile)
+				glog.V(0).Infof("Can not stat file after rename %s", cacheFile)
 				return nil, 0, err
 			}
 
 			size = fileInfo.Size()
 		} else {
-			glog.V(1).Infof("Can not stat file %s", cacheFile)
+			glog.V(0).Infof("Can not stat file %s", cacheFile)
 			return nil, 0, err
 		}
 	} else {
@@ -242,7 +242,7 @@ func moveFileToInternalCache(path string) (superBlock []byte, size int64, err er
 
 	superBlock, err = readSuperBlock(cacheFile)
 	if err != nil {
-		glog.V(1).Infof("Failed to read super block for file %s, err: %s", cacheFile, err)
+		glog.V(0).Infof("Failed to read super block for file %s, err: %s", cacheFile, err)
 		return nil, 0, err
 	}
 
@@ -259,13 +259,13 @@ func moveFileFromInternalCache(path string) (int64, error) {
 	cacheFile := buildInternalCacheFilePath(path)
 	fileInfo, err := os.Stat(cacheFile)
 	if err != nil {
-		glog.V(1).Infof("Can not stat file %s", cacheFile)
+		glog.V(0).Infof("Can not stat file %s", cacheFile)
 		return 0, err
 	}
 
 	err = os.Rename(cacheFile, path)
 	if err != nil {
-		glog.V(1).Infof("Failed to rename file from %s to %s, err: %s", cacheFile, path, err)
+		glog.V(0).Infof("Failed to rename file from %s to %s, err: %s", cacheFile, path, err)
 		return 0, err
 	}
 
