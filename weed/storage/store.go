@@ -509,6 +509,7 @@ func (s *Store) MountVolume(i needle.VolumeId) error {
 				Version:          uint32(v.Version()),
 				Ttl:              v.Ttl.ToUint32(),
 				DiskType:         string(v.location.DiskType),
+				ReadOnly:         v.volumeInfo.ReadOnly,
 			}
 			return nil
 		}

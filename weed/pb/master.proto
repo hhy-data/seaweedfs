@@ -114,11 +114,12 @@ message VolumeInformationMessage {
 
 message VolumeShortInformationMessage {
   uint32 id = 1;
-  string collection = 3;
-  uint32 replica_placement = 8;
-  uint32 version = 9;
-  uint32 ttl = 10;
-  string disk_type = 15;
+  string collection = 2;
+  uint32 replica_placement = 3;
+  uint32 version = 4;
+  uint32 ttl = 5;
+  string disk_type = 6;
+  bool read_only = 7;
 }
 
 message VolumeEcShardInformationMessage {
