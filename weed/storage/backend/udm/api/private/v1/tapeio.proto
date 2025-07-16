@@ -13,12 +13,6 @@ service TapeIO {
   rpc ReadFromTape(ReadFromTapeRequest) returns (ReadFromTapeResponse) {}
 }
 
-message DataLocation {
-  string host = 1;
-  LocationType location_type = 2;
-  string sub_path = 3;
-}
-
 message WriteToTapeRequest {
   repeated WriteToTapeFileInfo files = 1;
   repeated string pools = 2;

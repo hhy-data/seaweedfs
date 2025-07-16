@@ -41,9 +41,11 @@ func (cs *ClientSet) DownloadFile(ctx context.Context, volumeShortName, key stri
 			{
 				Id: key,
 				WriteTo: &pb.DataLocation{
-					Host:         os.Getenv("POD_IP"),
-					LocationType: pb.LocationType_volumeInternalCache,
-					SubPath:      volumeShortName,
+					Host: os.Getenv("POD_IP"),
+					Key: &pb.FileKey{
+						LocationType: pb.LocationType_volumeInternalCache,
+						SubPath:      volumeShortName,
+					},
 				},
 			},
 		},
