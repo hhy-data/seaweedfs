@@ -220,6 +220,116 @@ func (x *DownloadFileResponse) GetData() []byte {
 	return nil
 }
 
+type FileKey struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	LocationType LocationType `protobuf:"varint,1,opt,name=location_type,json=locationType,proto3,enum=private.v1.LocationType" json:"location_type,omitempty"`
+	SubPath      string       `protobuf:"bytes,2,opt,name=sub_path,json=subPath,proto3" json:"sub_path,omitempty"`
+}
+
+func (x *FileKey) Reset() {
+	*x = FileKey{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_private_v1_meta_proto_msgTypes[2]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *FileKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileKey) ProtoMessage() {}
+
+func (x *FileKey) ProtoReflect() protoreflect.Message {
+	mi := &file_private_v1_meta_proto_msgTypes[2]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileKey.ProtoReflect.Descriptor instead.
+func (*FileKey) Descriptor() ([]byte, []int) {
+	return file_private_v1_meta_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *FileKey) GetLocationType() LocationType {
+	if x != nil {
+		return x.LocationType
+	}
+	return LocationType_unknown
+}
+
+func (x *FileKey) GetSubPath() string {
+	if x != nil {
+		return x.SubPath
+	}
+	return ""
+}
+
+type DataLocation struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Host string   `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Key  *FileKey `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+}
+
+func (x *DataLocation) Reset() {
+	*x = DataLocation{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_private_v1_meta_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *DataLocation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataLocation) ProtoMessage() {}
+
+func (x *DataLocation) ProtoReflect() protoreflect.Message {
+	mi := &file_private_v1_meta_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataLocation.ProtoReflect.Descriptor instead.
+func (*DataLocation) Descriptor() ([]byte, []int) {
+	return file_private_v1_meta_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DataLocation) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *DataLocation) GetKey() *FileKey {
+	if x != nil {
+		return x.Key
+	}
+	return nil
+}
+
 var File_private_v1_meta_proto protoreflect.FileDescriptor
 
 var file_private_v1_meta_proto_rawDesc = []byte{
@@ -233,7 +343,18 @@ var file_private_v1_meta_proto_rawDesc = []byte{
 	0x52, 0x06, 0x64, 0x69, 0x67, 0x65, 0x73, 0x74, 0x22, 0x2a, 0x0a, 0x14, 0x44, 0x6f, 0x77, 0x6e,
 	0x6c, 0x6f, 0x61, 0x64, 0x46, 0x69, 0x6c, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
 	0x12, 0x12, 0x0a, 0x04, 0x64, 0x61, 0x74, 0x61, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x04,
-	0x64, 0x61, 0x74, 0x61, 0x2a, 0x4a, 0x0a, 0x0c, 0x4c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x64, 0x61, 0x74, 0x61, 0x22, 0x63, 0x0a, 0x07, 0x46, 0x69, 0x6c, 0x65, 0x4b, 0x65, 0x79, 0x12,
+	0x3d, 0x0a, 0x0d, 0x6c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x74, 0x79, 0x70, 0x65,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x18, 0x2e, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
+	0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x79, 0x70, 0x65,
+	0x52, 0x0c, 0x6c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x79, 0x70, 0x65, 0x12, 0x19,
+	0x0a, 0x08, 0x73, 0x75, 0x62, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x07, 0x73, 0x75, 0x62, 0x50, 0x61, 0x74, 0x68, 0x22, 0x49, 0x0a, 0x0c, 0x44, 0x61, 0x74,
+	0x61, 0x4c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x12, 0x0a, 0x04, 0x68, 0x6f, 0x73,
+	0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x68, 0x6f, 0x73, 0x74, 0x12, 0x25, 0x0a,
+	0x03, 0x6b, 0x65, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x70, 0x72, 0x69,
+	0x76, 0x61, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x46, 0x69, 0x6c, 0x65, 0x4b, 0x65, 0x79, 0x52,
+	0x03, 0x6b, 0x65, 0x79, 0x2a, 0x4a, 0x0a, 0x0c, 0x4c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e,
 	0x54, 0x79, 0x70, 0x65, 0x12, 0x0b, 0x0a, 0x07, 0x75, 0x6e, 0x6b, 0x6e, 0x6f, 0x77, 0x6e, 0x10,
 	0x00, 0x12, 0x0a, 0x0a, 0x06, 0x76, 0x6f, 0x6c, 0x75, 0x6d, 0x65, 0x10, 0x01, 0x12, 0x17, 0x0a,
 	0x13, 0x76, 0x6f, 0x6c, 0x75, 0x6d, 0x65, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x43,
@@ -259,20 +380,24 @@ func file_private_v1_meta_proto_rawDescGZIP() []byte {
 }
 
 var file_private_v1_meta_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_private_v1_meta_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_private_v1_meta_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_private_v1_meta_proto_goTypes = []any{
 	(LocationType)(0),            // 0: private.v1.LocationType
 	(CheckSumAlgorithm)(0),       // 1: private.v1.CheckSumAlgorithm
 	(*Checksum)(nil),             // 2: private.v1.Checksum
 	(*DownloadFileResponse)(nil), // 3: private.v1.DownloadFileResponse
+	(*FileKey)(nil),              // 4: private.v1.FileKey
+	(*DataLocation)(nil),         // 5: private.v1.DataLocation
 }
 var file_private_v1_meta_proto_depIdxs = []int32{
 	1, // 0: private.v1.Checksum.alg:type_name -> private.v1.CheckSumAlgorithm
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	0, // 1: private.v1.FileKey.location_type:type_name -> private.v1.LocationType
+	4, // 2: private.v1.DataLocation.key:type_name -> private.v1.FileKey
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_private_v1_meta_proto_init() }
@@ -305,6 +430,30 @@ func file_private_v1_meta_proto_init() {
 				return nil
 			}
 		}
+		file_private_v1_meta_proto_msgTypes[2].Exporter = func(v any, i int) any {
+			switch v := v.(*FileKey); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_private_v1_meta_proto_msgTypes[3].Exporter = func(v any, i int) any {
+			switch v := v.(*DataLocation); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -312,7 +461,7 @@ func file_private_v1_meta_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_private_v1_meta_proto_rawDesc,
 			NumEnums:      2,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

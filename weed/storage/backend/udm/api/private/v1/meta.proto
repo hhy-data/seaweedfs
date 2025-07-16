@@ -26,3 +26,13 @@ message Checksum {
 message DownloadFileResponse {
   bytes data = 1;
 }
+
+message FileKey {
+  LocationType location_type = 1;
+  string sub_path = 2;
+}
+
+message DataLocation {
+  string host = 1;
+  FileKey key = 2;
+}
