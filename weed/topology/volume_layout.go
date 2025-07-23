@@ -564,6 +564,7 @@ func (vl *VolumeLayout) Stats() *VolumeLayoutStats {
 		size, fileCount := vll.Stats(vid, freshThreshold)
 		ret.FileCount += uint64(fileCount)
 		ret.UsedSize += size * uint64(vll.Length())
+		glog.V(4).Infof("volume layout stats, size: %d, fileCount: %d, length: %d", size, fileCount, vll.Length())
 		if vl.readonlyVolumes.IsTrue(vid) {
 			ret.TotalSize += size * uint64(vll.Length())
 		} else {

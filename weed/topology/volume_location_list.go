@@ -3,6 +3,7 @@ package topology
 import (
 	"fmt"
 
+	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/storage/needle"
 )
 
@@ -90,6 +91,7 @@ func (dnll *VolumeLocationList) Stats(vid needle.VolumeId, freshThreshHold int64
 	for _, dnl := range dnll.list {
 		if dnl.LastSeen < freshThreshHold {
 			vinfo, err := dnl.GetVolumesById(vid)
+			glog.V(4).Infof("volume layout stats, volumeId: %s, size: %d, fileCount: %d", vid, vinfo.Size, vinfo.FileCount)
 			if err == nil {
 				return (vinfo.Size - vinfo.DeletedByteCount), vinfo.FileCount - vinfo.DeleteCount
 			}
