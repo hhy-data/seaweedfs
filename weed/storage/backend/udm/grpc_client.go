@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -158,6 +159,17 @@ func (cs *ClientSet) ReadAt(ctx context.Context, key string, offset, length int6
 	}
 
 	return buffer[:n], nil
+}
+
+func (cs *ClientSet) GetStat(ctx context.Context, key string) (int64, time.Time, error) {
+	res, err := cs.storageClient.GetStat(ctx, &pb.FileKey{
+		Key: key,
+	})
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+
+	return res.Size, res.Mtime.AsTime(), nil
 }
 
 func (cs *ClientSet) ReadSuperBlock(ctx context.Context, key string) ([]byte, error) {

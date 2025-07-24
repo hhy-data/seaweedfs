@@ -141,7 +141,7 @@ func (f *backendStorageFile) Close() error {
 }
 
 func (f *backendStorageFile) GetStat() (datSize int64, modTime time.Time, err error) {
-	return
+	return f.backendStorage.client.GetStat(context.TODO(), f.key)
 }
 
 func (f *backendStorageFile) Name() string {
