@@ -141,6 +141,16 @@ func (f *backendStorageFile) Close() error {
 }
 
 func (f *backendStorageFile) GetStat() (datSize int64, modTime time.Time, err error) {
+	files := f.tierInfo.GetFiles()
+
+	if len(files) == 0 {
+		err = fmt.Errorf("remote file info not found")
+		return
+	}
+
+	datSize = int64(files[0].FileSize)
+	modTime = time.Unix(int64(files[0].ModifiedTime), 0)
+
 	return
 }
 
