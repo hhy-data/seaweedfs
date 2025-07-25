@@ -3,7 +3,6 @@ syntax = "proto3";
 package storage.v1;
 
 import "google/protobuf/empty.proto";
-import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/seaweedfs/seaweedfs/weed/storage/backend/udm/v1;v1";
 
@@ -15,9 +14,6 @@ service UDMStorage {
   }
 
   rpc CacheFile (FileKey) returns (CacheFileReply) {
-  }
-
-  rpc GetStat (FileKey) returns (GetStatReply) {
   }
 
   rpc ReadSuperBlock (FileKey) returns (ReadSuperBlockReply) {
@@ -43,11 +39,6 @@ message FileInfo {
 
 message CacheFileReply {
   string cache_file = 1;
-}
-
-message GetStatReply {
-  int64 size = 1;
-  google.protobuf.Timestamp mtime = 2;
 }
 
 message ReadSuperBlockReply {
