@@ -2,6 +2,7 @@ package udm
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -88,7 +89,7 @@ func (s *BackendStorage) CopyFile(f *os.File, _ func(progressed int64, percentag
 		return
 	}
 
-	key = generateFileKey(f.Name(), superblock)
+	key = generateFileKey(f.Name(), superblock, size)
 
 	glog.V(0).Infof("copying dat file of %s to remote udm.%s as %s", f.Name(), s.id, key)
 
@@ -127,7 +128,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	length := len(p)
 	var data []byte
 	if isSuperBlock(off, length) {
-		_, data = getPathAndSuperBlockFromKey(f.key)
+		data = getSuperBlockFromKey(f.key)
 		copy(p, data)
 		return length, nil
 	}
@@ -136,7 +137,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
 	}
 
-	path, _ := getPathAndSuperBlockFromKey(f.key)
+	path := getPathFromKey(f.key)
 	cacheFile := buildInternalCacheFilePath(path)
 	_, err = os.Stat(cacheFile)
 	if err != nil {
@@ -197,7 +198,8 @@ func (f *backendStorageFile) Close() error {
 }
 
 func (f *backendStorageFile) GetStat() (datSize int64, modTime time.Time, err error) {
-	return
+	size := getSizeFromKey(f.key)
+	return size, time.Unix(0, 0), nil
 }
 
 func (f *backendStorageFile) Name() string {
@@ -272,17 +274,34 @@ func moveFileFromInternalCache(path string) (int64, error) {
 	return fileInfo.Size(), nil
 }
 
-func generateFileKey(path string, superBlock []byte) string {
-	return fmt.Sprintf("%s%s%s", path, separator, string(superBlock))
+func generateFileKey(path string, superBlock []byte, size int64) string {
+	encodedSuperBlock := hex.EncodeToString(superBlock)
+	return strings.Join([]string{path, separator, encodedSuperBlock, strconv.FormatInt(size, 10)}, separator)
 }
 
-func getPathAndSuperBlockFromKey(key string) (string, []byte) {
-	path := strings.SplitN(key, separator, 2)
-	return path[0], []byte(path[1])
+func getPathFromKey(key string) string {
+	parts := strings.SplitN(key, separator, 3)
+	return parts[0]
+}
+
+func getSuperBlockFromKey(key string) []byte {
+	parts := strings.SplitN(key, separator, 3)
+	superBlock, err := hex.DecodeString(parts[1])
+	if err != nil {
+		superBlock = []byte(parts[1])
+	}
+
+	return superBlock
+}
+
+func getSizeFromKey(key string) int64 {
+	parts := strings.SplitN(key, separator, 3)
+	res, _ := strconv.ParseInt(parts[2], 10, 64)
+	return res
 }
 
 func deleteFileInInternalCache(key string) error {
-	path, _ := getPathAndSuperBlockFromKey(key)
+	path := getPathFromKey(key)
 	cacheFile := buildInternalCacheFilePath(path)
 	return os.Remove(cacheFile)
 }
