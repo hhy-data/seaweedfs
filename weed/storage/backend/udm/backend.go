@@ -89,7 +89,7 @@ func (s *BackendStorage) CopyFile(f *os.File, _ func(progressed int64, percentag
 		return
 	}
 
-	key = generateFileKey(f.Name(), superblock, size)
+	key = generateFileKey(f.Name(), superblock)
 
 	glog.V(0).Infof("copying dat file of %s to remote udm.%s as %s", f.Name(), s.id, key)
 
@@ -198,8 +198,17 @@ func (f *backendStorageFile) Close() error {
 }
 
 func (f *backendStorageFile) GetStat() (datSize int64, modTime time.Time, err error) {
-	size := getSizeFromKey(f.key)
-	return size, time.Unix(0, 0), nil
+	files := f.tierInfo.GetFiles()
+
+	if len(files) == 0 {
+		err = fmt.Errorf("remote file info not found")
+		return
+	}
+
+	datSize = int64(files[0].FileSize)
+	modTime = time.Unix(int64(files[0].ModifiedTime), 0)
+
+	return
 }
 
 func (f *backendStorageFile) Name() string {
@@ -274,30 +283,24 @@ func moveFileFromInternalCache(path string) (int64, error) {
 	return fileInfo.Size(), nil
 }
 
-func generateFileKey(path string, superBlock []byte, size int64) string {
+func generateFileKey(path string, superBlock []byte) string {
 	encodedSuperBlock := hex.EncodeToString(superBlock)
-	return strings.Join([]string{path, separator, encodedSuperBlock, strconv.FormatInt(size, 10)}, separator)
+	return strings.Join([]string{path, encodedSuperBlock}, separator)
 }
 
 func getPathFromKey(key string) string {
-	parts := strings.SplitN(key, separator, 3)
+	parts := strings.SplitN(key, separator, 2)
 	return parts[0]
 }
 
 func getSuperBlockFromKey(key string) []byte {
-	parts := strings.SplitN(key, separator, 3)
+	parts := strings.SplitN(key, separator, 2)
 	superBlock, err := hex.DecodeString(parts[1])
 	if err != nil {
 		superBlock = []byte(parts[1])
 	}
 
 	return superBlock
-}
-
-func getSizeFromKey(key string) int64 {
-	parts := strings.SplitN(key, separator, 3)
-	res, _ := strconv.ParseInt(parts[2], 10, 64)
-	return res
 }
 
 func deleteFileInInternalCache(key string) error {
