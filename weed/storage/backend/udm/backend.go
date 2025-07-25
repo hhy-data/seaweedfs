@@ -2,6 +2,7 @@ package udm
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -127,7 +128,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	length := len(p)
 	var data []byte
 	if isSuperBlock(off, length) {
-		_, data = getPathAndSuperBlockFromKey(f.key)
+		data = getSuperBlockFromKey(f.key)
 		copy(p, data)
 		return length, nil
 	}
@@ -136,7 +137,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
 	}
 
-	path, _ := getPathAndSuperBlockFromKey(f.key)
+	path := getPathFromKey(f.key)
 	cacheFile := buildInternalCacheFilePath(path)
 	_, err = os.Stat(cacheFile)
 	if err != nil {
@@ -197,6 +198,16 @@ func (f *backendStorageFile) Close() error {
 }
 
 func (f *backendStorageFile) GetStat() (datSize int64, modTime time.Time, err error) {
+	files := f.tierInfo.GetFiles()
+
+	if len(files) == 0 {
+		err = fmt.Errorf("remote file info not found")
+		return
+	}
+
+	datSize = int64(files[0].FileSize)
+	modTime = time.Unix(int64(files[0].ModifiedTime), 0)
+
 	return
 }
 
@@ -273,16 +284,27 @@ func moveFileFromInternalCache(path string) (int64, error) {
 }
 
 func generateFileKey(path string, superBlock []byte) string {
-	return fmt.Sprintf("%s%s%s", path, separator, string(superBlock))
+	encodedSuperBlock := hex.EncodeToString(superBlock)
+	return strings.Join([]string{path, encodedSuperBlock}, separator)
 }
 
-func getPathAndSuperBlockFromKey(key string) (string, []byte) {
-	path := strings.SplitN(key, separator, 2)
-	return path[0], []byte(path[1])
+func getPathFromKey(key string) string {
+	parts := strings.SplitN(key, separator, 2)
+	return parts[0]
+}
+
+func getSuperBlockFromKey(key string) []byte {
+	parts := strings.SplitN(key, separator, 2)
+	superBlock, err := hex.DecodeString(parts[1])
+	if err != nil {
+		superBlock = []byte(parts[1])
+	}
+
+	return superBlock
 }
 
 func deleteFileInInternalCache(key string) error {
-	path, _ := getPathAndSuperBlockFromKey(key)
+	path := getPathFromKey(key)
 	cacheFile := buildInternalCacheFilePath(path)
 	return os.Remove(cacheFile)
 }
