@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/pingcap/kvproto/pkg/kvrpcpb"
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
@@ -18,6 +19,8 @@ import (
 	"github.com/tikv/client-go/v2/config"
 	"github.com/tikv/client-go/v2/txnkv"
 )
+
+const defaultKeyspaceName = "seaweed"
 
 var (
 	_ filer.FilerStore = ((*TikvStore)(nil))
@@ -58,7 +61,7 @@ func (store *TikvStore) initialize(ca, cert, key string, verify_cn, pdAddrs []st
 	config.UpdateGlobal(func(conf *config.Config) {
 		conf.Security = config.NewSecurity(ca, cert, key, verify_cn)
 	})
-	client, err := txnkv.NewClient(pdAddrs)
+	client, err := txnkv.NewClient(pdAddrs, txnkv.WithAPIVersion(kvrpcpb.APIVersion_V2), txnkv.WithKeyspace(defaultKeyspaceName))
 	store.client = client
 	return err
 }
