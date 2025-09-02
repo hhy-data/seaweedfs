@@ -287,7 +287,7 @@ func (store *TikvStore) ListDirectoryPrefixedEntries(ctx context.Context, dirPat
 			// println("list", entry.FullPath, "chunks", len(entry.GetChunks()))
 			if decodeErr := entry.DecodeAttributesAndChunks(util.MaybeDecompressData(iter.Value())); decodeErr != nil {
 				err = decodeErr
-				glog.V(0).InfofCtx(ctx, "list %s : %v", entry.FullPath, err)
+				glog.V(0).Infof("list %s : %v", entry.FullPath, err)
 				break
 			}
 
@@ -296,7 +296,7 @@ func (store *TikvStore) ListDirectoryPrefixedEntries(ctx context.Context, dirPat
 				if entry.Crtime.Add(time.Duration(entry.TtlSec) * time.Second).Before(time.Now()) {
 					// Entry is expired, delete it and continue without counting toward limit
 					if deleteErr := store.DeleteEntry(ctx, entry.FullPath); deleteErr != nil {
-						glog.V(0).InfofCtx(ctx, "failed to delete expired entry %s: %v", entry.FullPath, deleteErr)
+						glog.V(0).Infof("failed to delete expired entry %s: %v", entry.FullPath, deleteErr)
 					}
 					if err := iter.Next(); err != nil {
 						break
