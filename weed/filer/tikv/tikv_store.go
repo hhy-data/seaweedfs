@@ -20,7 +20,7 @@ import (
 	"github.com/tikv/client-go/v2/txnkv"
 )
 
-const defaultBatchCommitSize = 10000
+const defaultbatchDeleteCount = 10000
 
 var (
 	_ filer.FilerStore = ((*TikvStore)(nil))
@@ -31,9 +31,9 @@ func init() {
 }
 
 type TikvStore struct {
-	client          *txnkv.Client
-	onePC           bool
-	batchCommitSize int
+	client           *txnkv.Client
+	onePC            bool
+	batchDeleteCount int
 }
 
 // Basic APIs
@@ -50,11 +50,11 @@ func (store *TikvStore) Initialize(config util.Configuration, prefix string) err
 
 	bdc := config.GetInt(prefix + "batchdelete_count")
 	if bdc <= 0 {
-		bdc = defaultBatchCommitSize
+		bdc = defaultbatchDeleteCount
 	}
 
 	store.onePC = config.GetBool(prefix + "enable_1pc")
-	store.batchCommitSize = bdc
+	store.batchDeleteCount = bdc
 	return store.initialize(ca, cert, key, verify_cn, pdAddrs)
 }
 
@@ -166,11 +166,15 @@ func (store *TikvStore) DeleteFolderChildren(ctx context.Context, path util.Full
 		return err
 	}
 
-	if !iterTxn.inContext {
-		defer func() {
+	defer func() {
+		if !iterTxn.inContext {
+			// The unconditional rollback of iterTxn can cause issues when DeleteFolderChildren is
+			// executed within a larger transaction. If a transaction is passed via the context,
+			// this defer statement will roll back the entire parent transaction, which is likely
+			// unintended. The rollback should only occur for transactions created within this function.
 			_ = iterTxn.Rollback()
-		}()
-	}
+		}
+	}()
 
 	iter, err := iterTxn.Iter(directoryPrefix, nil)
 	if err != nil {
@@ -188,7 +192,7 @@ func (store *TikvStore) DeleteFolderChildren(ctx context.Context, path util.Full
 
 		keys = append(keys, append([]byte(nil), key...))
 
-		if len(keys) >= store.batchCommitSize {
+		if len(keys) >= store.batchDeleteCount {
 			if err := store.deleteBatch(ctx, keys); err != nil {
 				return fmt.Errorf("delete batch in %s, error: %v", path, err)
 			}
@@ -216,6 +220,8 @@ func (store *TikvStore) deleteBatch(ctx context.Context, keys [][]byte) error {
 	}
 
 	if !deleteTxn.inContext {
+		// if we created a new transaction, we must manage its lifecycle.
+		// Rollback is a no-op if the transaction is already committed.
 		defer func() { _ = deleteTxn.Rollback() }()
 	}
 
