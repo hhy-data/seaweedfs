@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -260,31 +259,19 @@ func (store *TikvStore) ListDirectoryPrefixedEntries(ctx context.Context, dirPat
 			return err
 		}
 		defer iter.Close()
-		i := int64(0)
-		for iter.Valid() {
+		for i := int64(0); i < limit && iter.Valid(); i++ {
 			key := iter.Key()
 			if !bytes.HasPrefix(key, directoryPrefix) {
 				break
 			}
 			fileName := getNameFromKey(key)
-			if fileName == "" {
+			if fileName == "" || fileName == startFileName && !includeStartFile {
 				if err := iter.Next(); err != nil {
 					break
+				} else {
+					continue
 				}
-				continue
 			}
-			if fileName == startFileName && !includeStartFile {
-				if err := iter.Next(); err != nil {
-					break
-				}
-				continue
-			}
-
-			// Check limit only before processing valid entries
-			if limit > 0 && i >= limit {
-				break
-			}
-
 			lastFileName = fileName
 			entry := &filer.Entry{
 				FullPath: util.NewFullPath(string(dirPath), fileName),
@@ -296,29 +283,11 @@ func (store *TikvStore) ListDirectoryPrefixedEntries(ctx context.Context, dirPat
 				glog.V(0).Infof("list %s : %v", entry.FullPath, err)
 				break
 			}
-
-			// Check TTL expiration before calling eachEntryFunc (similar to Redis stores)
-			if entry.TtlSec > 0 {
-				if entry.Crtime.Add(time.Duration(entry.TtlSec) * time.Second).Before(time.Now()) {
-					// Entry is expired, delete it and continue without counting toward limit
-					if deleteErr := store.DeleteEntry(ctx, entry.FullPath); deleteErr != nil {
-						glog.V(0).Infof("failed to delete expired entry %s: %v", entry.FullPath, deleteErr)
-					}
-					if err := iter.Next(); err != nil {
-						break
-					}
-					continue
-				}
-			}
-
-			// Only increment counter for non-expired entries
-			i++
-
 			if err := iter.Next(); !eachEntryFunc(entry) || err != nil {
 				break
 			}
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		return lastFileName, fmt.Errorf("prefix list %s : %v", dirPath, err)
