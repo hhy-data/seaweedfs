@@ -7,6 +7,8 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fuse"
 	sys "golang.org/x/sys/unix"
+
+	"github.com/seaweedfs/seaweedfs/weed/glog"
 )
 
 const (
@@ -104,6 +106,7 @@ func (wfs *WFS) SetXAttr(cancel <-chan struct{}, input *fuse.SetXAttrIn, attr st
 		}
 	}
 
+	glog.V(4).Infof("SetXAttr, value: %s, data: %s", attr, data)
 	path, fh, entry, status := wfs.maybeReadEntry(input.NodeId)
 	if status != fuse.OK {
 		return status
