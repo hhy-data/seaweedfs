@@ -106,7 +106,7 @@ func (wfs *WFS) SetXAttr(cancel <-chan struct{}, input *fuse.SetXAttrIn, attr st
 		}
 	}
 
-	glog.V(4).Infof("SetXAttr, value: %s, data: %s", attr, data)
+	glog.V(3).Infof("SetXAttr, value: %s, data: %x", attr, data)
 	path, fh, entry, status := wfs.maybeReadEntry(input.NodeId)
 	if status != fuse.OK {
 		return status
