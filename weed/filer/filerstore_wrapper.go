@@ -149,6 +149,15 @@ func (fsw *FilerStoreWrapper) UpdateEntry(ctx context.Context, entry *Entry) err
 		return err
 	}
 
+	// Debug xattr data before passing to actual store
+	if entry.Extended != nil {
+		for k, v := range entry.Extended {
+			if strings.Contains(k, "DOSATTRIB") {
+				glog.V(1).Infof("filerstore_wrapper.UpdateEntry xattr debug - %s: key=%s, value_hex=%x, value_string=%q, store=%s", entry.FullPath, k, v, string(v), actualStore.GetName())
+			}
+		}
+	}
+
 	// glog.V(4).Infof("UpdateEntry %s", entry.FullPath)
 	return actualStore.UpdateEntry(ctx, entry)
 }

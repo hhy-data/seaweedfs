@@ -1,6 +1,7 @@
 package mount
 
 import (
+	"encoding/base64"
 	"runtime"
 	"strings"
 	"syscall"
@@ -106,7 +107,11 @@ func (wfs *WFS) SetXAttr(cancel <-chan struct{}, input *fuse.SetXAttrIn, attr st
 		}
 	}
 
-	glog.V(3).Infof("SetXAttr, value: %s, data: %x", attr, data)
+	//glog.V(3).Infof("SetXAttr, value: %s, data: %x", attr, data)
+
+	// Additional debug: check data integrity and memory bounds
+	glog.V(3).Infof("SetXAttr detailed - attr=%q, data_len=%d, data_cap=%d, data_hex=%x, data_base64=%s", attr, len(data), cap(data), data, base64.StdEncoding.EncodeToString(data))
+
 	path, fh, entry, status := wfs.maybeReadEntry(input.NodeId)
 	if status != fuse.OK {
 		return status
@@ -132,7 +137,15 @@ func (wfs *WFS) SetXAttr(cancel <-chan struct{}, input *fuse.SetXAttrIn, attr st
 	case sys.XATTR_REPLACE:
 		fallthrough
 	default:
-		entry.Extended[XATTR_PREFIX+attr] = data
+		// Create a defensive copy to avoid memory corruption
+		dataCopy := make([]byte, len(data))
+		copy(dataCopy, data)
+		entry.Extended[XATTR_PREFIX+attr] = dataCopy
+
+		// Verify the copy is correct
+		if attr == "user.DOSATTRIB" {
+			glog.V(3).Infof("SetXAttr copy verification - original_hex=%x, copy_hex=%x, equal=%v, path=%s", data, dataCopy, string(data) == string(dataCopy), path)
+		}
 	}
 
 	if fh != nil {

@@ -314,6 +314,16 @@ func (f *Filer) UpdateEntry(ctx context.Context, oldEntry, entry *Entry) (err er
 			return fmt.Errorf("existing %s is a file", oldEntry.FullPath)
 		}
 	}
+
+	// Debug xattr data before passing to store
+	if entry.Extended != nil {
+		for k, v := range entry.Extended {
+			if strings.Contains(k, "DOSATTRIB") {
+				glog.V(1).Infof("filer.UpdateEntry xattr debug - %s: key=%s, value_hex=%x, value_string=%q", entry.FullPath, k, v, string(v))
+			}
+		}
+	}
+
 	return f.Store.UpdateEntry(ctx, entry)
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/cluster"
@@ -171,6 +172,24 @@ func (fs *FilerServer) CreateEntry(ctx context.Context, req *filer_pb.CreateEntr
 func (fs *FilerServer) UpdateEntry(ctx context.Context, req *filer_pb.UpdateEntryRequest) (*filer_pb.UpdateEntryResponse, error) {
 
 	glog.V(4).Infof("UpdateEntry %v", req)
+
+	// Debug xattr data received by filer server
+	if req.Entry != nil && req.Entry.Extended != nil {
+		for k, v := range req.Entry.Extended {
+			if strings.Contains(k, "DOSATTRIB") {
+				fullpath := util.Join(req.Directory, req.Entry.Name)
+				glog.V(1).Infof("filer_grpc_server xattr debug - %s: key=%s, value_len=%d, value_cap=%d, value_hex=%x, value_string=%q", fullpath, k, len(v), cap(v), v, string(v))
+				
+				// Check for potential corruption indicators
+				if len(v) > 0 && len(v) < 100 { // DOSATTRIB should be much smaller normally
+					// Check if value looks like part of filename
+					if strings.Contains(string(v), "_") && strings.Contains(string(v), "2025") {
+						glog.Errorf("POTENTIAL CORRUPTION DETECTED - %s: xattr value looks like filename part: %q", fullpath, string(v))
+					}
+				}
+			}
+		}
+	}
 
 	fullpath := util.Join(req.Directory, req.Entry.Name)
 	entry, err := fs.filer.FindEntry(ctx, util.FullPath(fullpath))

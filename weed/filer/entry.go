@@ -1,9 +1,12 @@
 package filer
 
 import (
+	"bytes"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/util"
 )
@@ -93,7 +96,23 @@ func (entry *Entry) ToExistingProtoEntry(message *filer_pb.Entry) {
 	message.IsDirectory = entry.IsDirectory()
 	message.Attributes = EntryAttributeToPb(entry)
 	message.Chunks = entry.GetChunks()
-	message.Extended = entry.Extended
+	// Create defensive copy of Extended map to avoid memory corruption
+	if entry.Extended != nil {
+		message.Extended = make(map[string][]byte)
+		for k, v := range entry.Extended {
+			// Create defensive copy of each value
+			valueCopy := make([]byte, len(v))
+			copy(valueCopy, v)
+			message.Extended[k] = valueCopy
+			
+			// Debug DOSATTRIB specifically
+			if strings.Contains(k, "DOSATTRIB") {
+				glog.V(3).Infof("ToExistingProtoEntry xattr debug - %s: key=%s, original_hex=%x, copy_hex=%x, equal=%v", entry.FullPath, k, v, valueCopy, bytes.Equal(v, valueCopy))
+			}
+		}
+	} else {
+		message.Extended = nil
+	}
 	message.HardLinkId = entry.HardLinkId
 	message.HardLinkCounter = entry.HardLinkCounter
 	message.Content = entry.Content
@@ -105,7 +124,23 @@ func (entry *Entry) ToExistingProtoEntry(message *filer_pb.Entry) {
 func FromPbEntryToExistingEntry(message *filer_pb.Entry, fsEntry *Entry) {
 	fsEntry.Attr = PbToEntryAttribute(message.Attributes)
 	fsEntry.Chunks = message.Chunks
-	fsEntry.Extended = message.Extended
+	// Create defensive copy of Extended map during deserialization
+	if message.Extended != nil {
+		fsEntry.Extended = make(map[string][]byte)
+		for k, v := range message.Extended {
+			// Create defensive copy of each value
+			valueCopy := make([]byte, len(v))
+			copy(valueCopy, v)
+			fsEntry.Extended[k] = valueCopy
+			
+			// Debug DOSATTRIB specifically
+			if strings.Contains(k, "DOSATTRIB") {
+				glog.V(3).Infof("FromPbEntryToExistingEntry xattr debug - %s: key=%s, original_hex=%x, copy_hex=%x, equal=%v", fsEntry.FullPath, k, v, valueCopy, bytes.Equal(v, valueCopy))
+			}
+		}
+	} else {
+		fsEntry.Extended = nil
+	}
 	fsEntry.HardLinkId = HardLinkId(message.HardLinkId)
 	fsEntry.HardLinkCounter = message.HardLinkCounter
 	fsEntry.Content = message.Content

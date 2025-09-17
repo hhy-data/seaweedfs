@@ -3,6 +3,7 @@ package mount
 import (
 	"context"
 	"fmt"
+	"strings"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -26,6 +27,14 @@ func (wfs *WFS) saveEntry(path util.FullPath, entry *filer_pb.Entry) (code fuse.
 			Signatures: []int32{wfs.signature},
 		}
 
+			// Debug xattr data before sending to filer
+		if entry.Extended != nil {
+			for k, v := range entry.Extended {
+				if strings.Contains(k, "DOSATTRIB") {
+					glog.V(1).Infof("saveEntry xattr debug - %s: key=%s, value_hex=%x, value_string=%q, path=%s", path, k, v, string(v), path)
+				}
+			}
+		}
 		glog.V(1).Infof("save entry: %v", request)
 		_, err := client.UpdateEntry(context.Background(), request)
 		if err != nil {
