@@ -246,7 +246,7 @@ func readEventsFromLogFile(filePath string) ([]*EventWithSource, error) {
 		size := util.BytesToUint32(sizeBuf)
 		data := make([]byte, int(size))
 
-		if n, err := dst.Read(data); n != len(data) {
+		if _, err := io.ReadFull(dst, data); err != nil {
 			return nil, err
 		}
 
@@ -416,7 +416,6 @@ func processEvent(eventWithSource *EventWithSource, logFileName string, complete
 	return nil
 }
 
-// mergeChunksIntoState merges chunks from an event into the complete file state
 func mergeChunksIntoState(state *CompleteFileState, chunks []*filer_pb.FileChunk, timestamp int64) error {
 	for _, chunk := range chunks {
 		// Create a unique key for this chunk based on offset
@@ -424,10 +423,13 @@ func mergeChunksIntoState(state *CompleteFileState, chunks []*filer_pb.FileChunk
 
 		// Clone the chunk to avoid reference issues
 		clonedChunk := cloneChunk(chunk)
+		if clonedChunk.ModifiedTsNs == 0 {
+			clonedChunk.ModifiedTsNs = timestamp
+		}
 
 		// If we already have a chunk at this offset, use the newer one
 		if existingChunk, exists := state.AllChunks[chunkKey]; exists {
-			if clonedChunk.ModifiedTsNs > existingChunk.ModifiedTsNs {
+			if clonedChunk.ModifiedTsNs >= existingChunk.ModifiedTsNs {
 				state.AllChunks[chunkKey] = clonedChunk
 			}
 		} else {

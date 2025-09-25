@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	util_http "github.com/seaweedfs/seaweedfs/weed/util/http"
 )
 
 var (
@@ -61,7 +59,6 @@ type DownloadStats struct {
 
 func main() {
 	flag.Parse()
-	util_http.InitGlobalHttpClient()
 
 	if *filerURL == "" {
 		fmt.Fprintf(os.Stderr, "Error: filer URL is required\n")
@@ -188,10 +185,7 @@ func walkDirectory(client *http.Client, filerURL, remotePath, localBasePath stri
 	fmt.Printf("Found %d entries, in %s\n", len(entries), filerURL)
 
 	for _, entry := range entries {
-		fmt.Printf("entry name: %s, file size: %d, mod time: %s\n", entry.FullPath, entry.FileSize, entry.ModTime)
 
-		// filer REST API does not return if an entry is a directory, here assume
-		// if the file size is 0, and name like yyyy-mm-dd, it is a log directory
 		baseName := filepath.Base(entry.FullPath)
 
 		if os.FileMode(entry.Mode).IsDir() {
@@ -223,7 +217,7 @@ func walkDirectory(client *http.Client, filerURL, remotePath, localBasePath stri
 			*tasks = append(*tasks, task)
 
 			if *verbose {
-				fmt.Printf("  File: %s (%d bytes)\n", entry.FullPath, entry.FileSize)
+				fmt.Printf("entry name: %s, file size: %d, mod time: %s\n", entry.FullPath, entry.FileSize, entry.ModTime)
 			}
 		}
 	}
