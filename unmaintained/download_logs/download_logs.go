@@ -85,7 +85,12 @@ func main() {
 		fmt.Printf("\n=== Discovering log files ===\n")
 	}
 
-	downloadTasks, err := discoverLogFiles(*filerURL, *logPath)
+	// Make HTTP request
+	client := &http.Client{
+		Timeout: time.Duration(*timeout) * time.Second,
+	}
+
+	downloadTasks, err := discoverLogFiles(client, *filerURL, *logPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error discovering log files: %v\n", err)
 		os.Exit(1)
@@ -120,7 +125,7 @@ func main() {
 	}
 
 	fmt.Printf("\n=== Starting Downloads ===\n")
-	err = downloadFiles(downloadTasks, stats)
+	err = downloadFiles(client, downloadTasks, stats)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error during download: %v\n", err)
 		os.Exit(1)
@@ -147,11 +152,11 @@ func main() {
 }
 
 // discoverLogFiles recursively discovers all log files in the given path
-func discoverLogFiles(filerURL, logPath string) ([]*DownloadTask, error) {
+func discoverLogFiles(client *http.Client, filerURL, logPath string) ([]*DownloadTask, error) {
 	var allTasks []*DownloadTask
 	visited := make(map[string]bool)
 
-	err := walkDirectory(filerURL, logPath, *outputDir, &allTasks, visited)
+	err := walkDirectory(client, filerURL, logPath, *outputDir, &allTasks, visited)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +170,7 @@ func discoverLogFiles(filerURL, logPath string) ([]*DownloadTask, error) {
 }
 
 // walkDirectory recursively walks a directory and collects download tasks
-func walkDirectory(filerURL, remotePath, localBasePath string, tasks *[]*DownloadTask, visited map[string]bool) error {
+func walkDirectory(client *http.Client, filerURL, remotePath, localBasePath string, tasks *[]*DownloadTask, visited map[string]bool) error {
 	// Prevent infinite loops
 	if visited[remotePath] {
 		return nil
@@ -176,7 +181,7 @@ func walkDirectory(filerURL, remotePath, localBasePath string, tasks *[]*Downloa
 		fmt.Printf("Scanning: %s\n", remotePath)
 	}
 
-	entries, err := listDirectory(filerURL, remotePath)
+	entries, err := listDirectory(client, filerURL, remotePath)
 	if err != nil {
 		return fmt.Errorf("failed to list directory %s: %v", remotePath, err)
 	}
@@ -189,10 +194,10 @@ func walkDirectory(filerURL, remotePath, localBasePath string, tasks *[]*Downloa
 		// if the file size is 0, and name like yyyy-mm-dd, it is a log directory
 		baseName := filepath.Base(entry.FullPath)
 
-		if entry.FileSize == 0 && isValidDateStr(baseName) {
+		if os.FileMode(entry.Mode).IsDir() {
 			// scan log files inside
 			subRemotePath := filepath.Join(remotePath, baseName)
-			err := walkDirectory(filerURL, subRemotePath, localBasePath, tasks, visited)
+			err := walkDirectory(client, filerURL, subRemotePath, localBasePath, tasks, visited)
 			if err != nil {
 				if *verbose {
 					fmt.Printf("Warning: failed to scan directory %s: %v\n", subRemotePath, err)
@@ -226,7 +231,7 @@ func walkDirectory(filerURL, remotePath, localBasePath string, tasks *[]*Downloa
 	return nil
 }
 
-func listDirectory(filerURL, path string) ([]FilerEntry, error) {
+func listDirectory(client *http.Client, filerURL, path string) ([]FilerEntry, error) {
 	apiURL := fmt.Sprintf("%s%s?pretty=y", filerURL, path)
 
 	if *verbose {
@@ -242,11 +247,6 @@ func listDirectory(filerURL, path string) ([]FilerEntry, error) {
 	// Set Accept header for JSON response
 	req.Header.Set("Accept", "application/json")
 
-	// Make HTTP request
-	client := &http.Client{
-		Timeout: time.Duration(*timeout) * time.Second,
-	}
-
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %v", err)
@@ -254,7 +254,10 @@ func listDirectory(filerURL, path string) ([]FilerEntry, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body: %v", err)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -270,7 +273,7 @@ func listDirectory(filerURL, path string) ([]FilerEntry, error) {
 }
 
 // downloadFiles downloads all files with concurrent workers
-func downloadFiles(tasks []*DownloadTask, stats *DownloadStats) error {
+func downloadFiles(client *http.Client, tasks []*DownloadTask, stats *DownloadStats) error {
 	taskChan := make(chan *DownloadTask, len(tasks))
 	var wg sync.WaitGroup
 
@@ -304,7 +307,7 @@ func downloadFiles(tasks []*DownloadTask, stats *DownloadStats) error {
 		go func(workerID int) {
 			defer wg.Done()
 			for task := range taskChan {
-				err := downloadFile(task, stats, workerID)
+				err := downloadFile(client, task, stats, workerID)
 				if err != nil {
 					fmt.Printf("\nWorker %d: Failed to download %s: %v\n",
 						workerID, task.RemotePath, err)
@@ -332,11 +335,11 @@ func downloadFiles(tasks []*DownloadTask, stats *DownloadStats) error {
 }
 
 // downloadFile downloads a single file with retries
-func downloadFile(task *DownloadTask, stats *DownloadStats, workerID int) error {
+func downloadFile(client *http.Client, task *DownloadTask, stats *DownloadStats, workerID int) error {
 	var lastErr error
 
 	for attempt := 1; attempt <= *retryCount; attempt++ {
-		err := downloadFileAttempt(task, stats, workerID)
+		err := downloadFileAttempt(client, task, stats, workerID)
 		if err == nil {
 			return nil
 		}
@@ -347,7 +350,7 @@ func downloadFile(task *DownloadTask, stats *DownloadStats, workerID int) error 
 				fmt.Printf("Worker %d: Retry %d/%d for %s: %v\n",
 					workerID, attempt, *retryCount, task.RemotePath, err)
 			}
-			time.Sleep(time.Duration(attempt) * time.Second) // Exponential backoff
+			time.Sleep(time.Duration((1 << attempt)) * time.Second) // Exponential backoff
 		}
 	}
 
@@ -355,7 +358,7 @@ func downloadFile(task *DownloadTask, stats *DownloadStats, workerID int) error 
 }
 
 // downloadFileAttempt performs a single download attempt
-func downloadFileAttempt(task *DownloadTask, stats *DownloadStats, workerID int) error {
+func downloadFileAttempt(client *http.Client, task *DownloadTask, stats *DownloadStats, workerID int) error {
 	// Create local directory if needed
 	localDir := filepath.Dir(task.LocalPath)
 	if err := os.MkdirAll(localDir, 0755); err != nil {
@@ -388,11 +391,6 @@ func downloadFileAttempt(task *DownloadTask, stats *DownloadStats, workerID int)
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %v", err)
-	}
-
-	// Make HTTP request
-	client := &http.Client{
-		Timeout: time.Duration(*timeout) * time.Second,
 	}
 
 	resp, err := client.Do(req)
@@ -450,9 +448,4 @@ func downloadFileAttempt(task *DownloadTask, stats *DownloadStats, workerID int)
 	stats.mu.Unlock()
 
 	return nil
-}
-
-func isValidDateStr(s string) bool {
-	_, err := time.Parse("2006-01-02", s)
-	return err == nil
 }

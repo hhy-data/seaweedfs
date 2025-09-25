@@ -15,7 +15,6 @@ import (
 
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/util"
-	util_http "github.com/seaweedfs/seaweedfs/weed/util/http"
 )
 
 var (
@@ -23,7 +22,6 @@ var (
 	outputMetaFile = flag.String("output", "", "output meta file path (default: auto-generated)")
 	verbose        = flag.Bool("v", false, "verbose output")
 	skipDeleted    = flag.Bool("skip-deleted", true, "skip deleted files")
-	maxMemoryMB    = flag.Int("max-memory", 2048, "maximum memory usage in MB (for large datasets)")
 	batchSize      = flag.Int("batch-size", 10000, "batch size for processing events")
 )
 
@@ -80,7 +78,6 @@ type EventWithSource struct {
 
 func main() {
 	flag.Parse()
-	util_http.InitGlobalHttpClient()
 
 	if *logDir == "" {
 		log.Fatal("log directory is required")
@@ -88,7 +85,6 @@ func main() {
 
 	if *verbose {
 		fmt.Printf("Starting log recovery from directory: %s\n", *logDir)
-		fmt.Printf("Max memory usage: %d MB\n", *maxMemoryMB)
 		fmt.Printf("Batch size: %d events\n", *batchSize)
 	}
 
@@ -240,8 +236,8 @@ func readEventsFromLogFile(filePath string) ([]*EventWithSource, error) {
 	sizeBuf := make([]byte, 4)
 
 	for {
-		if n, err := dst.Read(sizeBuf); n != 4 {
-			if err == io.EOF {
+		if _, err := io.ReadFull(dst, sizeBuf); err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				break
 			}
 			return nil, err
@@ -269,16 +265,15 @@ func readEventsFromLogFile(filePath string) ([]*EventWithSource, error) {
 		}
 
 		// Extract file path from the event
-		filePath := extractFilePathFromEvent(event)
-		if filePath == "" {
+		filePathFromEvent := extractFilePathFromEvent(event)
+		if filePathFromEvent == "" {
 			continue // Skip events without valid file paths
 		}
-
 		eventWithSource := &EventWithSource{
 			Event:     event,
 			Timestamp: logEntry.TsNs,
 			LogFile:   filepath.Base(filePath),
-			FilePath:  filePath,
+			FilePath:  filePathFromEvent,
 		}
 
 		events = append(events, eventWithSource)
@@ -324,7 +319,6 @@ func processEventsInBatches(events []*EventWithSource, logFileName string, compl
 			return err
 		}
 
-		// Force garbage collection for large datasets
 		if i > 0 && i%(*batchSize*10) == 0 {
 			if *verbose {
 				fmt.Printf("  Processed %d events from %s\n", i, logFileName)
@@ -454,74 +448,17 @@ func mergeChunksIntoState(state *CompleteFileState, chunks []*filer_pb.FileChunk
 
 // cloneEntry creates a deep copy of an entry
 func cloneEntry(original *filer_pb.Entry) *filer_pb.Entry {
-	cloned := &filer_pb.Entry{
-		Name:        original.Name,
-		IsDirectory: original.IsDirectory,
-		Extended:    make(map[string][]byte),
+	if original == nil {
+		return nil
 	}
-
-	// Clone attributes
-	if original.Attributes != nil {
-		cloned.Attributes = &filer_pb.FuseAttributes{
-			FileSize:      original.Attributes.FileSize,
-			Mtime:         original.Attributes.Mtime,
-			FileMode:      original.Attributes.FileMode,
-			Uid:           original.Attributes.Uid,
-			Gid:           original.Attributes.Gid,
-			Crtime:        original.Attributes.Crtime,
-			Mime:          original.Attributes.Mime,
-			TtlSec:        original.Attributes.TtlSec,
-			UserName:      original.Attributes.UserName,
-			GroupName:     append([]string{}, original.Attributes.GroupName...),
-			SymlinkTarget: original.Attributes.SymlinkTarget,
-			Md5:           append([]byte{}, original.Attributes.Md5...),
-			Rdev:          original.Attributes.Rdev,
-			Inode:         original.Attributes.Inode,
-		}
-	}
-
-	// Clone extended attributes
-	for k, v := range original.Extended {
-		cloned.Extended[k] = append([]byte{}, v...)
-	}
-
+	cloned := proto.Clone(original).(*filer_pb.Entry)
 	// Note: Chunks will be set separately from the merged state
+	cloned.Chunks = nil
 	return cloned
 }
 
-// cloneChunk creates a deep copy of a chunk
 func cloneChunk(original *filer_pb.FileChunk) *filer_pb.FileChunk {
-	cloned := &filer_pb.FileChunk{
-		FileId:          original.FileId,
-		Offset:          original.Offset,
-		Size:            original.Size,
-		ModifiedTsNs:    original.ModifiedTsNs,
-		ETag:            original.ETag,
-		SourceFileId:    original.SourceFileId,
-		CipherKey:       append([]byte{}, original.CipherKey...),
-		IsCompressed:    original.IsCompressed,
-		IsChunkManifest: original.IsChunkManifest,
-	}
-
-	// Clone FID
-	if original.Fid != nil {
-		cloned.Fid = &filer_pb.FileId{
-			VolumeId: original.Fid.VolumeId,
-			FileKey:  original.Fid.FileKey,
-			Cookie:   original.Fid.Cookie,
-		}
-	}
-
-	// Clone source FID
-	if original.SourceFid != nil {
-		cloned.SourceFid = &filer_pb.FileId{
-			VolumeId: original.SourceFid.VolumeId,
-			FileKey:  original.SourceFid.FileKey,
-			Cookie:   original.SourceFid.Cookie,
-		}
-	}
-
-	return cloned
+	return proto.Clone(original).(*filer_pb.FileChunk)
 }
 
 func buildCompleteEntries(completeStates map[string]*CompleteFileState) ([]*filer_pb.FullEntry, error) {
