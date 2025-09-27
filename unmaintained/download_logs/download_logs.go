@@ -22,6 +22,8 @@ var (
 	verbose     = flag.Bool("v", false, "verbose output")
 	retryCount  = flag.Int("retry", 3, "number of retries for failed downloads")
 	timeout     = flag.Int("timeout", 30, "timeout in seconds for each download")
+	dateDir     = flag.String("date", "", "specific date directory to download (e.g., 2025-09-03)")
+	dateFrom    = flag.String("date-from", "", "download logs from this date onwards (e.g., 2025-09-03)")
 )
 
 // FilerEntry represents a file or directory entry from filer API
@@ -57,12 +59,83 @@ type DownloadStats struct {
 	mu             sync.Mutex
 }
 
+// isValidDateFormat checks if the given string is in YYYY-MM-DD format
+func isValidDateFormat(dateStr string) bool {
+	_, err := time.Parse("2006-01-02", dateStr)
+	return err == nil
+}
+
+// shouldIncludeDirectory determines if a directory should be included based on date filtering
+func shouldIncludeDirectory(dirName string) bool {
+	// If no date filters are specified, include all directories
+	if *dateDir == "" && *dateFrom == "" {
+		return true
+	}
+	
+	// Check if directory name looks like a date (YYYY-MM-DD)
+	if !isValidDateFormat(dirName) {
+		return true // Include non-date directories
+	}
+	
+	// If specific date directory is specified, only include that directory
+	if *dateDir != "" {
+		return dirName == *dateDir
+	}
+	
+	// If date-from is specified, include directories from that date onwards
+	if *dateFrom != "" {
+		dirDate, err := time.Parse("2006-01-02", dirName)
+		if err != nil {
+			return true // Include if we can't parse the directory name
+		}
+		
+		fromDate, err := time.Parse("2006-01-02", *dateFrom)
+		if err != nil {
+			return true // Include if we can't parse the from date
+		}
+		
+		return dirDate.Equal(fromDate) || dirDate.After(fromDate)
+	}
+	
+	return true
+}
+
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Download log files from SeaweedFS filer.\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  # Download all logs\n")
+		fmt.Fprintf(os.Stderr, "  %s -filer=http://192.168.2.11:8888\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Download logs for specific date\n")
+		fmt.Fprintf(os.Stderr, "  %s -filer=http://192.168.2.11:8888 -date=2025-09-03\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Download logs from specific date onwards\n")
+		fmt.Fprintf(os.Stderr, "  %s -filer=http://192.168.2.11:8888 -date-from=2025-09-03\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		flag.PrintDefaults()
+	}
+	
 	flag.Parse()
 
 	if *filerURL == "" {
 		fmt.Fprintf(os.Stderr, "Error: filer URL is required\n")
 		flag.Usage()
+		os.Exit(1)
+	}
+	
+	// Validate date parameters
+	if *dateDir != "" && !isValidDateFormat(*dateDir) {
+		fmt.Fprintf(os.Stderr, "Error: invalid date format for -date parameter. Use YYYY-MM-DD format (e.g., 2025-09-03)\n")
+		os.Exit(1)
+	}
+	
+	if *dateFrom != "" && !isValidDateFormat(*dateFrom) {
+		fmt.Fprintf(os.Stderr, "Error: invalid date format for -date-from parameter. Use YYYY-MM-DD format (e.g., 2025-09-03)\n")
+		os.Exit(1)
+	}
+	
+	if *dateDir != "" && *dateFrom != "" {
+		fmt.Fprintf(os.Stderr, "Error: cannot use both -date and -date-from parameters at the same time\n")
 		os.Exit(1)
 	}
 
@@ -76,6 +149,13 @@ func main() {
 	fmt.Printf("Filer URL: %s\n", *filerURL)
 	fmt.Printf("Log path: %s\n", *logPath)
 	fmt.Printf("Output directory: %s\n", *outputDir)
+	
+	// Display date filtering configuration
+	if *dateDir != "" {
+		fmt.Printf("Date filter: %s (specific date)\n", *dateDir)
+	} else if *dateFrom != "" {
+		fmt.Printf("Date filter: from %s onwards\n", *dateFrom)
+	}
 
 	// Discover all log files
 	if *verbose {
@@ -189,6 +269,14 @@ func walkDirectory(client *http.Client, filerURL, remotePath, localBasePath stri
 		baseName := filepath.Base(entry.FullPath)
 
 		if os.FileMode(entry.Mode).IsDir() {
+			// Apply date filtering for directories
+			if !shouldIncludeDirectory(baseName) {
+				if *verbose {
+					fmt.Printf("Skipping directory %s (date filter)\n", baseName)
+				}
+				continue
+			}
+			
 			// scan log files inside
 			subRemotePath := filepath.Join(remotePath, baseName)
 			err := walkDirectory(client, filerURL, subRemotePath, localBasePath, tasks, visited)

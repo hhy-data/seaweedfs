@@ -21,8 +21,11 @@ var (
 	logDir         = flag.String("logdir", "", "log directory path (e.g., /topics/.system/log)")
 	outputMetaFile = flag.String("output", "", "output meta file path (default: auto-generated)")
 	verbose        = flag.Bool("v", false, "verbose output")
-	skipDeleted    = flag.Bool("skip-deleted", true, "skip deleted files")
+	skipDeleted    = flag.Bool("skip-deleted", true, "skip recovering deleted files")
 	batchSize      = flag.Int("batch-size", 10000, "batch size for processing events")
+	includeUploads = flag.Bool("include-uploads", false, "include .uploads directory files (internal multipart operations)")
+	maxMemoryMB    = flag.Int("max-memory", 1024, "maximum memory usage in MB (approximate)")
+	flushThreshold = flag.Int("flush-threshold", 5000, "number of files to accumulate before flushing to disk")
 )
 
 // EventType represents the type of file event
@@ -68,6 +71,37 @@ type CompleteFileState struct {
 	LastSeenLogFile string
 }
 
+// CompactFileState represents a memory-efficient file state
+type CompactFileState struct {
+	Path            string
+	FirstCreateTime int64
+	LastUpdateTime  int64
+	TotalSize       uint64
+	IsDeleted       bool
+	IsDirectory     bool
+	EventCount      int
+	LastSeenLogFile string
+	// Essential attributes only
+	FileMode uint32
+	Uid      uint32
+	Gid      uint32
+	Crtime   int64
+	Mtime    int64
+	// Compact chunk representation - just file IDs and sizes
+	ChunkCount   int
+	ChunkFileIds []string // simplified chunk tracking
+	ChunkSizes   []uint64
+	ChunkOffsets []int64
+}
+
+// MemoryManager tracks memory usage and manages flushing
+type MemoryManager struct {
+	CurrentFiles     int
+	MaxFiles         int
+	TotalMemoryMB    int
+	EstimatedUsageMB int
+}
+
 // EventWithSource represents an event with its source log file
 type EventWithSource struct {
 	Event     *filer_pb.SubscribeMetadataResponse
@@ -76,7 +110,31 @@ type EventWithSource struct {
 	FilePath  string
 }
 
+// isUploadPath checks if a path is related to .uploads directory (multipart upload operations)
+// Matches paths like: /buckets/bucket1/.uploads, /buckets/bucket1/.uploads/xxx, etc.
+func isUploadPath(path string) bool {
+	return strings.Contains(path, "/.uploads/") || strings.HasSuffix(path, "/.uploads")
+}
+
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Recover files from SeaweedFS filer log files and generate meta file for restoration.\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  # Basic recovery (skip deleted files, exclude .uploads)\n")
+		fmt.Fprintf(os.Stderr, "  %s -logdir=/path/to/logs\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Include deleted files but exclude .uploads\n")
+		fmt.Fprintf(os.Stderr, "  %s -logdir=/path/to/logs -skip-deleted=false\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Include both deleted files and .uploads internal operations\n")
+		fmt.Fprintf(os.Stderr, "  %s -logdir=/path/to/logs -skip-deleted=false -include-uploads\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Control memory usage for large datasets (outputs multiple batch files)\n")
+		fmt.Fprintf(os.Stderr, "  %s -logdir=/path/to/logs -max-memory=512 -flush-threshold=2000\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Process large datasets with aggressive memory limits\n")
+		fmt.Fprintf(os.Stderr, "  %s -logdir=/path/to/logs -max-memory=256 -flush-threshold=1000\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
 
 	if *logDir == "" {
@@ -116,7 +174,7 @@ func main() {
 		fmt.Printf("Processed %d unique files\n", len(completeStates))
 	}
 
-	// Build final filer entries
+	// Build final filer entries from remaining states
 	filerEntries, err := buildCompleteEntries(completeStates)
 	if err != nil {
 		log.Fatalf("failed to build complete entries: %v", err)
@@ -126,24 +184,42 @@ func main() {
 		fmt.Printf("Final entries to save: %d\n", len(filerEntries))
 	}
 
-	// Generate output meta file
-	outputFileName := *outputMetaFile
-	if outputFileName == "" {
-		t := time.Now()
-		outputFileName = fmt.Sprintf("log-recover-%04d%02d%02d-%02d%02d%02d.meta",
-			t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+	// Generate output meta file for final batch
+	var outputFileName string
+	var totalEntries int
+	
+	if len(filerEntries) > 0 {
+		outputFileName = *outputMetaFile
+		if outputFileName == "" {
+			t := time.Now()
+			outputFileName = fmt.Sprintf("log-recover-final-%04d%02d%02d-%02d%02d%02d.meta",
+				t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+		}
+
+		err = saveMetaFile(outputFileName, filerEntries)
+		if err != nil {
+			log.Fatalf("failed to save meta file %s: %v", outputFileName, err)
+		}
+		totalEntries = len(filerEntries)
+		fmt.Printf("Successfully saved final batch with %d entries to %s\n", len(filerEntries), outputFileName)
+	} else {
+		fmt.Printf("No final entries to save\n")
 	}
 
-	err = saveMetaFile(outputFileName, filerEntries)
-	if err != nil {
-		log.Fatalf("failed to save meta file %s: %v", outputFileName, err)
+	// Summary of all processing
+	fmt.Printf("\n=== Recovery Complete ===\n")
+	fmt.Printf("Processed %d log files\n", len(logFiles))
+	if totalEntries > 0 {
+		fmt.Printf("Total entries recovered: %d\n", totalEntries)
+		if outputFileName != "" {
+			fmt.Printf("Final output file: %s\n", outputFileName)
+		}
 	}
 
-	fmt.Printf("Successfully recovered %d entries from %d log files and saved to %s\n",
-		len(filerEntries), len(logFiles), outputFileName)
-
-	// Print summary statistics
-	printSummaryStats(completeStates, filerEntries)
+	// Print summary statistics for final batch only
+	if len(filerEntries) > 0 {
+		printSummaryStats(completeStates, filerEntries)
+	}
 }
 
 // discoverLogFiles finds and sorts all log files in the directory
@@ -191,8 +267,21 @@ func discoverLogFiles(logDir string) ([]*LogFile, error) {
 }
 
 func processAllLogFiles(logFiles []*LogFile) (map[string]*CompleteFileState, error) {
+	// Initialize memory management
+	estimatedBytesPerFile := 500 // rough estimate per complete file state
+	maxFiles := (*maxMemoryMB * 1024 * 1024) / estimatedBytesPerFile
+	if maxFiles < *flushThreshold {
+		maxFiles = *flushThreshold
+	}
+
+	if *verbose {
+		fmt.Printf("Memory limit: %d MB, max tracked files: %d\n", *maxMemoryMB, maxFiles)
+	}
+
 	completeStates := make(map[string]*CompleteFileState)
 	totalEvents := 0
+	processedFiles := 0
+	totalOutputFiles := 0
 
 	for _, logFile := range logFiles {
 		if *verbose {
@@ -216,10 +305,47 @@ func processAllLogFiles(logFiles []*LogFile) (map[string]*CompleteFileState, err
 		}
 
 		totalEvents += len(events)
+		processedFiles++
+
+		// Check if we need to flush results to manage memory
+		if len(completeStates) >= *flushThreshold {
+			if *verbose {
+				fmt.Printf("Memory threshold reached (%d files), flushing batch %d...\n", len(completeStates), totalOutputFiles+1)
+			}
+
+			// Build and save batch entries
+			batchEntries, err := buildCompleteEntries(completeStates)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build batch entries: %v", err)
+			}
+
+			if len(batchEntries) > 0 {
+				// Generate batch output file name
+				t := time.Now()
+				batchFileName := fmt.Sprintf("log-recover-batch-%d-%04d%02d%02d-%02d%02d%02d.meta",
+					totalOutputFiles+1, t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+
+				err = saveMetaFile(batchFileName, batchEntries)
+				if err != nil {
+					return nil, fmt.Errorf("failed to save batch meta file %s: %v", batchFileName, err)
+				}
+
+				totalOutputFiles++
+				if *verbose {
+					fmt.Printf("Saved batch %d with %d entries to %s\n", totalOutputFiles, len(batchEntries), batchFileName)
+				}
+			}
+
+			// Clear processed states to free memory
+			completeStates = make(map[string]*CompleteFileState)
+		}
 	}
 
 	if *verbose {
-		fmt.Printf("Total events processed: %d\n", totalEvents)
+		fmt.Printf("Total events processed: %d from %d log files\n", totalEvents, processedFiles)
+		if totalOutputFiles > 0 {
+			fmt.Printf("Generated %d batch files\n", totalOutputFiles)
+		}
 	}
 
 	return completeStates, nil
@@ -475,6 +601,14 @@ func buildCompleteEntries(completeStates map[string]*CompleteFileState) ([]*file
 			continue
 		}
 
+		// Filter out .uploads directory files unless explicitly requested
+		if !*includeUploads && isUploadPath(filePath) {
+			if *verbose {
+				fmt.Printf("Skipping .uploads path: %s\n", filePath)
+			}
+			continue
+		}
+
 		if state.FinalEntry == nil {
 			if *verbose {
 				fmt.Printf("Warning: no final entry for %s, skipping\n", filePath)
@@ -557,13 +691,15 @@ func saveMetaFile(fileName string, filerEntries []*filer_pb.FullEntry) error {
 func printSummaryStats(completeStates map[string]*CompleteFileState, filerEntries []*filer_pb.FullEntry) {
 	fmt.Printf("\n=== Recovery Summary ===\n")
 
-	var totalEvents, deletedFiles, activeFiles int
+	var totalEvents, deletedFiles, activeFiles, uploadsFiles int
 	var totalSize uint64
 	var dirCount, fileCount int
 
-	for _, state := range completeStates {
+	for filePath, state := range completeStates {
 		totalEvents += state.EventCount
-		if state.IsDeleted {
+		if isUploadPath(filePath) {
+			uploadsFiles++
+		} else if state.IsDeleted {
 			deletedFiles++
 		} else {
 			activeFiles++
@@ -583,6 +719,11 @@ func printSummaryStats(completeStates map[string]*CompleteFileState, filerEntrie
 	fmt.Printf("Total events processed: %d\n", totalEvents)
 	fmt.Printf("Active files: %d\n", activeFiles)
 	fmt.Printf("Deleted files: %d\n", deletedFiles)
+	fmt.Printf(".uploads files: %d\n", uploadsFiles)
 	fmt.Printf("Final entries saved: %d (directories: %d, files: %d)\n", len(filerEntries), dirCount, fileCount)
 	fmt.Printf("Total recovered data size: %.2f MB\n", float64(totalSize)/(1024*1024))
+
+	if uploadsFiles > 0 && !*includeUploads {
+		fmt.Printf("\nNote: %d .uploads files were excluded (use -include-uploads to include them)\n", uploadsFiles)
+	}
 }
