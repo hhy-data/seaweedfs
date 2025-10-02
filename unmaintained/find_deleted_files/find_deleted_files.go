@@ -56,12 +56,12 @@ type MemoryTracker struct {
 
 // DeletedFileRecord represents a permanently deleted file record
 type DeletedFileRecord struct {
-	Path        string
-	Name        string
-	Directory   string
-	DeleteTime  time.Time  // When the file was deleted
-	CreateTime  *time.Time // When the file was created (may be nil)
-	Entry       *filer_pb.Entry
+	Path       string
+	Name       string
+	Directory  string
+	DeleteTime time.Time  // When the file was deleted
+	CreateTime *time.Time // When the file was created (may be nil)
+	Entry      *filer_pb.Entry
 }
 
 // Regex pattern for log files: XX-XX.XXXXXXXX (time.8-char-hex)
@@ -247,7 +247,7 @@ func analyzeLogFile(filePath string, fromTime, toTime *time.Time) ([]DeletedFile
 	if maxFiles < *batchSize {
 		maxFiles = *batchSize
 	}
-	
+
 	return processLogFilesStreaming([]string{filePath}, maxFiles, fromTime, toTime)
 }
 
@@ -275,10 +275,10 @@ func processLogFilesStreaming(logFiles []string, maxFiles int, fromTime, toTime 
 			if *verbose {
 				fmt.Printf("Memory limit reached (%d files), flushing batch...\n", memTracker.TrackedFiles)
 			}
-			
+
 			batch := findPermanentlyDeletedFilesStreaming(fileLifecycles, fromTime, toTime)
 			allDeletedFiles = append(allDeletedFiles, batch...)
-			
+
 			// Clear processed lifecycles to free memory
 			fileLifecycles = make(map[string]*FileLifecycleSummary)
 			memTracker.TrackedFiles = 0
@@ -338,7 +338,7 @@ func processLogFileEventsStreaming(filePath string, fileLifecycles map[string]*F
 		}
 
 		timestamp := time.Unix(0, int64(logEntry.TsNs))
-		
+
 		// Process different event types
 		var eventType string
 		var entry *filer_pb.Entry
@@ -350,19 +350,18 @@ func processLogFileEventsStreaming(filePath string, fileLifecycles map[string]*F
 			eventType = "create"
 			entry = event.EventNotification.NewEntry
 			fullPath = filepath.Join(event.Directory, entry.Name)
-			
+
 		case event.EventNotification.NewEntry != nil && event.EventNotification.OldEntry != nil:
 			// File update
 			eventType = "update"
 			entry = event.EventNotification.NewEntry
 			fullPath = filepath.Join(event.Directory, entry.Name)
-			
+
 		case event.EventNotification.NewEntry == nil && event.EventNotification.OldEntry != nil:
 			// File delete
 			eventType = "delete"
 			entry = event.EventNotification.OldEntry
 			fullPath = filepath.Join(event.Directory, entry.Name)
-			
 		default:
 			// Unknown event, skip
 			continue
@@ -380,7 +379,7 @@ func processLogFileEventsStreaming(filePath string, fileLifecycles map[string]*F
 
 		lifecycle := fileLifecycles[fullPath]
 		lifecycle.EventCount++
-		
+
 		// Update lifecycle state (only keep essential info)
 		if eventType == "create" && lifecycle.FirstCreateTime == nil {
 			lifecycle.FirstCreateTime = &timestamp
@@ -388,11 +387,11 @@ func processLogFileEventsStreaming(filePath string, fileLifecycles map[string]*F
 		if eventType == "delete" {
 			lifecycle.LastDeleteTime = &timestamp
 		}
-		
+
 		// Always update last event info
 		lifecycle.LastEventType = eventType
 		lifecycle.LastEventTime = timestamp
-		
+
 		// Extract essential info from entry (avoid storing full entry)
 		if entry.Attributes != nil {
 			if entry.Attributes.Crtime > 0 {
@@ -420,7 +419,7 @@ func findPermanentlyDeletedFilesStreaming(fileLifecycles map[string]*FileLifecyc
 		if lifecycle.LastDeleteTime == nil {
 			continue
 		}
-		
+
 		if fromTime != nil && lifecycle.LastDeleteTime.Before(*fromTime) {
 			continue
 		}
@@ -488,7 +487,7 @@ func outputResults(writer *os.File, records []DeletedFileRecord) {
 
 	for _, record := range records {
 		deleteTimeStr := record.DeleteTime.Format(time.RFC3339)
-		
+
 		var createTimeStr string
 		if record.CreateTime != nil {
 			createTimeStr = record.CreateTime.Format(time.RFC3339)
