@@ -78,14 +78,28 @@ func walkLogEntryFile(dst *os.File) error {
 		switch {
 		case event.EventNotification.NewEntry != nil && event.EventNotification.OldEntry == nil:
 			fmt.Printf("file create, dir: %s: file: %+s, ts: %d, time: %s\n", event.Directory, event.EventNotification.NewEntry.Name, event.TsNs, timeStr)
+			displayLogEntry(event.EventNotification.NewEntry)
 		case event.EventNotification.NewEntry != nil && event.EventNotification.OldEntry != nil:
 			fmt.Printf("file update: dir: %s, file: %+s, ts: %d, time: %s\n", event.Directory, event.EventNotification.NewEntry.Name, event.TsNs, timeStr)
+			displayLogEntry(event.EventNotification.NewEntry)
 		case event.EventNotification.NewEntry == nil && event.EventNotification.OldEntry != nil:
 			fmt.Printf("file delete: dir: %s, file: %+s, ts: %d, time: %s\n", event.Directory, event.EventNotification.OldEntry.Name, event.TsNs, timeStr)
+			displayLogEntry(event.EventNotification.OldEntry)
 		case event.EventNotification.NewEntry == nil && event.EventNotification.OldEntry != nil:
 		default:
 			fmt.Printf("Unknown event: %v\n", event)
 		}
 	}
 
+}
+
+func displayLogEntry(entry *filer_pb.Entry) {
+	fmt.Printf("----name: %s, is_directory: %t, chunks: %d, attributes: %v\n",
+		entry.Name, entry.IsDirectory, len(entry.Chunks), entry.Attributes)
+
+	if len(entry.Chunks) > 0 {
+		for _, chunk := range entry.Chunks {
+			fmt.Printf("---------chunk: fileId: %s, file_offset: %d, size: %d, fid: %v, etag: %s\n", chunk.FileId, chunk.Offset, chunk.Size, chunk.Fid, chunk.ETag)
+		}
+	}
 }
