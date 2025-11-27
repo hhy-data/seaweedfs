@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -26,6 +27,25 @@ const (
 	maxPartsList           = 10000 // Limit number of parts in a listPartsResponse.
 	globalMaxPartID        = 100000
 )
+
+func sanitizeHeaderValue(value string) string {
+	// 1: Remove ASCII control characters including DEL
+	value = regexp.MustCompile(`[\x00-\x1F\x7F]`).ReplaceAllString(value, "_")
+
+	// 2: Remove unicode invisible/control characters
+	value = regexp.MustCompile(`[\p{C}]`).ReplaceAllString(value, "_")
+
+	// 3: Remove characters unsafe for SeaweedFS internal URL path
+	value = strings.Map(func(r rune) rune {
+		switch r {
+		case '"', '\'', '\\', '<', '>', '|', '*', '?':
+			return '_'
+		}
+		return r
+	}, value)
+
+	return value
+}
 
 // NewMultipartUploadHandler - New multipart upload.
 func (s3a *S3ApiServer) NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +274,7 @@ func (s3a *S3ApiServer) PutObjectPartHandler(w http.ResponseWriter, r *http.Requ
 		dataReader = mimeDetect(r, dataReader)
 	}
 	destination := fmt.Sprintf("%s/%s%s", s3a.option.BucketsPath, bucket, object)
+	destination = sanitizeHeaderValue(destination)
 
 	etag, errCode := s3a.putToFiler(r, uploadUrl, dataReader, destination, bucket)
 	if errCode != s3err.ErrNone {

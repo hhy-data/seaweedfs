@@ -147,6 +147,7 @@ func parseMultipart(r *http.Request, sizeLimit int64, pu *ParsedUpload) (e error
 	pu.FileName = part.FileName()
 	if pu.FileName != "" {
 		pu.FileName = path.Base(pu.FileName)
+		pu.FileName = util.SafeFileName(pu.FileName)
 	}
 
 	var dataSize int64
@@ -187,6 +188,7 @@ func parseMultipart(r *http.Request, sizeLimit int64, pu *ParsedUpload) (e error
 			// update
 			pu.Data = pu.bytesBuffer.Bytes()
 			pu.FileName = path.Base(fName)
+			pu.FileName = util.SafeFileName(pu.FileName)
 			break
 		}
 	}
@@ -236,6 +238,7 @@ func parseRawPost(r *http.Request, sizeLimit int64, pu *ParsedUpload) (e error) 
 
 	if pu.FileName != "" {
 		pu.FileName = path.Base(pu.FileName)
+		pu.FileName = util.SafeFileName(pu.FileName)
 	} else {
 		pu.FileName = path.Base(r.URL.Path)
 	}
