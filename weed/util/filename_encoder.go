@@ -22,9 +22,10 @@ func MakeSafeFilenameFallback(filename string) string {
 	result.Grow(len(filename))
 
 	for _, r := range filename {
-		// Keep only safe ASCII characters
-		// Replace control chars (0x00-0x1F, 0x7F), quotes, backslash
-		if r < 0x20 || r == 0x7F || r == '"' || r == '\\' || r == '\'' {
+		// The 'filename' parameter can be used only with US-ASCII characters.
+		// See RFC 6266, Section 4.3.
+		// Replace control chars (0x00-0x1F), non-ASCII chars (>= 0x7F), quotes, and backslash.
+		if r < 0x20 || r >= 0x7F || r == '"' || r == '\\' || r == '\'' {
 			result.WriteRune('_')
 		} else {
 			result.WriteRune(r)
@@ -84,8 +85,11 @@ func escapeQuotes(s string) string {
 // Handles both regular filenames and percent-encoded filenames
 func DecodeFilenameRFC2231(encoded string) (string, error) {
 	// If it starts with charset encoding (e.g., "UTF-8''..."), strip it
-	if idx := strings.Index(encoded, "''"); idx >= 0 {
-		encoded = encoded[idx+2:]
+	if pos := strings.IndexByte(encoded, '\''); pos > 0 {
+		if pos2 := strings.IndexByte(encoded[pos+1:], '\''); pos2 >= 0 {
+			// e.g. UTF-8'en'foo or UTF-8''foo
+			encoded = encoded[pos+1+pos2+1:]
+		}
 	}
 
 	// Decode percent encoding
