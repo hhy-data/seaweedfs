@@ -41,7 +41,7 @@ func MakeSafeFilenameFallback(filename string) string {
 }
 
 // FormatContentDispositionRFC2231 formats Content-Disposition header with RFC 2231 encoding
-// Returns: `attachment; filename="safe_fallback.jpg"; filename*=UTF-8''encoded%20name.jpg`
+// Returns: `attachment; filename="safe_fallback.jpg"; filename*=UTF-8”encoded%20name.jpg`
 func FormatContentDispositionRFC2231(disposition, filename string) string {
 	if filename == "" {
 		return disposition
@@ -65,7 +65,7 @@ func FormatContentDispositionRFC2231(disposition, filename string) string {
 	// Only add if:
 	// 1. The original filename is not empty
 	// 2. The encoded version differs from the safe fallback
-	if filename != "" && encodedFilename != safeFallback {
+	if encodedFilename != safeFallback {
 		result.WriteString(`; filename*=UTF-8''`)
 		result.WriteString(encodedFilename)
 	}
