@@ -243,3 +243,73 @@ func TestRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeHttpHeaderValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple path without special chars",
+			input:    "/buckets/mybucket/file.jpg",
+			expected: "/buckets/mybucket/file.jpg",
+		},
+		{
+			name:     "path with DEL character",
+			input:    "/buckets/mybucket/file_\x7Ftest.jpg",
+			expected: "/buckets/mybucket/file__test.jpg",
+		},
+		{
+			name:     "path with control characters",
+			input:    "/buckets/mybucket/file_\x01\x02\x03.jpg",
+			expected: "/buckets/mybucket/file____.jpg",
+		},
+		{
+			name:     "path with newline characters",
+			input:    "/buckets/mybucket/file_\n\rtest.jpg",
+			expected: "/buckets/mybucket/file___test.jpg",
+		},
+		{
+			name:     "path with Chinese and special chars",
+			input:    "/buckets/mybucket/文件_\x7F名.jpg",
+			expected: "/buckets/mybucket/文件__名.jpg",
+		},
+		{
+			name:     "path preserves forward slashes",
+			input:    "/bucket/path/to/file.jpg",
+			expected: "/bucket/path/to/file.jpg",
+		},
+		{
+			name:     "path preserves colons and dashes",
+			input:    "/bucket/path/to/file-name_v1.2:3.jpg",
+			expected: "/bucket/path/to/file-name_v1.2:3.jpg",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "only control characters",
+			input:    "\x01\x02\x03\x7F",
+			expected: "____",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SanitizeHttpHeaderValue(tt.input)
+			if result != tt.expected {
+				t.Errorf("SanitizeHttpHeaderValue(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+
+			// Verify result doesn't contain control characters
+			for _, r := range result {
+				if r < 0x20 || r == 0x7F {
+					t.Errorf("SanitizeHttpHeaderValue(%q) contains control character %q", tt.input, string(r))
+				}
+			}
+		})
+	}
+}

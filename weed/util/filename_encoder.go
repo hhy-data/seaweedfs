@@ -97,3 +97,24 @@ func DecodeFilenameRFC2231(encoded string) (string, error) {
 
 	return decoded, nil
 }
+
+// SanitizeHttpHeaderValue removes control characters from a string
+// to make it safe for use in HTTP header values (RFC 7230 compliant)
+// Replaces 0x00-0x1F and 0x7F with underscores
+// Preserves forward slashes and other valid path characters
+func SanitizeHttpHeaderValue(value string) string {
+	var result strings.Builder
+	result.Grow(len(value))
+
+	for _, r := range value {
+		// Replace control chars (0x00-0x1F, 0x7F) with underscore
+		// Keep all other characters including /, :, -, _, ., etc.
+		if r < 0x20 || r == 0x7F {
+			result.WriteRune('_')
+		} else {
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
+}
