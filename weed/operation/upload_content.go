@@ -65,10 +65,9 @@ func (uploadResult *UploadResult) ToPbFileChunk(fileId string, offset int64, tsN
 }
 
 var (
-	fileNameEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", "")
-	uploader *Uploader
+	uploader    *Uploader
 	uploaderErr error
-	once sync.Once
+	once        sync.Once
 )
 
 // HTTPClient interface for testing
@@ -311,8 +310,24 @@ func (uploader *Uploader) upload_content(fillBufferFunction func(w io.Writer) er
 		body_writer = multipart.NewWriter(option.BytesBuffer)
 	}
 	h := make(textproto.MIMEHeader)
-	filename := fileNameEscaper.Replace(option.Filename)
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+
+	// Use RFC 2231 encoding for filename to support special characters
+	safeFallback := util.MakeSafeFilenameFallback(option.Filename)
+	encodedFilename := util.EncodeFilenameRFC2231(option.Filename)
+
+	// Build Content-Disposition with both filename and filename* parameters
+	var disposition strings.Builder
+	disposition.WriteString(`form-data; name="file"; filename="`)
+	disposition.WriteString(strings.ReplaceAll(strings.ReplaceAll(safeFallback, `\`, `\\`), `"`, `\"`))
+	disposition.WriteString(`"`)
+
+	// Add filename* parameter if encoding is needed
+	if encodedFilename != safeFallback {
+		disposition.WriteString(`; filename*=UTF-8''`)
+		disposition.WriteString(encodedFilename)
+	}
+
+	h.Set("Content-Disposition", disposition.String())
 	h.Set("Idempotency-Key", option.UploadUrl)
 	if option.MimeType == "" {
 		option.MimeType = mime.TypeByExtension(strings.ToLower(filepath.Ext(option.Filename)))
