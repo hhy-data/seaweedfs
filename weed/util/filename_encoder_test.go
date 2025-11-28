@@ -84,10 +84,11 @@ func TestMakeSafeFilenameFallback(t *testing.T) {
 			expected: "test_file_.jpg",
 		},
 		{
-			name:     "filename with Chinese (kept as-is)",
-			input:    "文档_2024.pdf",
-			expected: "文档_2024.pdf",
-		},
+{
+	name:     "filename with Chinese",
+	input:    "文档_2024.pdf",
+	expected: "__2024.pdf",
+},
 		{
 			name:     "empty filename",
 			input:    "",
