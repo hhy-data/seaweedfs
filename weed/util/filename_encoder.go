@@ -3,7 +3,6 @@ package util
 import (
 	"net/url"
 	"strings"
-	"unicode"
 )
 
 // EncodeFilenameRFC2231 encodes filename according to RFC 2231/5987 for HTTP headers
@@ -63,8 +62,10 @@ func FormatContentDispositionRFC2231(disposition, filename string) string {
 	result.WriteString(`"`)
 
 	// Add RFC 2231 filename* parameter if encoding is needed
-	// Only add if the encoded version differs from the safe fallback
-	if encodedFilename != safeFallback {
+	// Only add if:
+	// 1. The original filename is not empty
+	// 2. The encoded version differs from the safe fallback
+	if filename != "" && encodedFilename != safeFallback {
 		result.WriteString(`; filename*=UTF-8''`)
 		result.WriteString(encodedFilename)
 	}
@@ -95,19 +96,4 @@ func DecodeFilenameRFC2231(encoded string) (string, error) {
 	}
 
 	return decoded, nil
-}
-
-// NeedsRFC2231Encoding checks if a filename contains characters that need encoding
-func NeedsRFC2231Encoding(filename string) bool {
-	for _, r := range filename {
-		// Check for non-ASCII or control characters
-		if r > unicode.MaxASCII || r < 0x20 || r == 0x7F {
-			return true
-		}
-		// Check for characters that should be encoded in HTTP headers
-		if r == '"' || r == '\\' || r == '\'' {
-			return true
-		}
-	}
-	return false
 }

@@ -312,22 +312,8 @@ func (uploader *Uploader) upload_content(fillBufferFunction func(w io.Writer) er
 	h := make(textproto.MIMEHeader)
 
 	// Use RFC 2231 encoding for filename to support special characters
-	safeFallback := util.MakeSafeFilenameFallback(option.Filename)
-	encodedFilename := util.EncodeFilenameRFC2231(option.Filename)
-
-	// Build Content-Disposition with both filename and filename* parameters
-	var disposition strings.Builder
-	disposition.WriteString(`form-data; name="file"; filename="`)
-	disposition.WriteString(strings.ReplaceAll(strings.ReplaceAll(safeFallback, `\`, `\\`), `"`, `\"`))
-	disposition.WriteString(`"`)
-
-	// Add filename* parameter if encoding is needed
-	if encodedFilename != safeFallback {
-		disposition.WriteString(`; filename*=UTF-8''`)
-		disposition.WriteString(encodedFilename)
-	}
-
-	h.Set("Content-Disposition", disposition.String())
+	disposition := util.FormatContentDispositionRFC2231(`form-data; name="file"`, option.Filename)
+	h.Set("Content-Disposition", disposition)
 	h.Set("Idempotency-Key", option.UploadUrl)
 	if option.MimeType == "" {
 		option.MimeType = mime.TypeByExtension(strings.ToLower(filepath.Ext(option.Filename)))

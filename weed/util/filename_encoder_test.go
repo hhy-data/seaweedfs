@@ -218,59 +218,6 @@ func TestDecodeFilenameRFC2231(t *testing.T) {
 	}
 }
 
-func TestNeedsRFC2231Encoding(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{
-			name:     "normal ASCII filename",
-			input:    "photo.jpg",
-			expected: false,
-		},
-		{
-			name:     "filename with space needs encoding",
-			input:    "my file.jpg",
-			expected: false, // space is ASCII 0x20, allowed in URL
-		},
-		{
-			name:     "filename with DEL character",
-			input:    "file_\x7Ftest.jpg",
-			expected: true,
-		},
-		{
-			name:     "filename with Chinese",
-			input:    "文档.pdf",
-			expected: true,
-		},
-		{
-			name:     "filename with control char",
-			input:    "test\x01file.jpg",
-			expected: true,
-		},
-		{
-			name:     "filename with quotes",
-			input:    `test"file".jpg`,
-			expected: true,
-		},
-		{
-			name:     "filename with backslash",
-			input:    `test\file.jpg`,
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := NeedsRFC2231Encoding(tt.input)
-			if result != tt.expected {
-				t.Errorf("NeedsRFC2231Encoding(%q) = %v; want %v", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestRoundTrip(t *testing.T) {
 	// Test that encoding and decoding preserves the original filename
 	testCases := []string{
