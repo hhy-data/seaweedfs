@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -278,14 +277,16 @@ func adjustHeaderContentDisposition(w http.ResponseWriter, r *http.Request, file
 		return
 	}
 	if filename != "" {
-		filename = url.QueryEscape(filename)
-		contentDisposition := "inline"
+		disposition := "inline"
 		if r.FormValue("dl") != "" {
 			if dl, _ := strconv.ParseBool(r.FormValue("dl")); dl {
-				contentDisposition = "attachment"
+				disposition = "attachment"
 			}
 		}
-		w.Header().Set("Content-Disposition", contentDisposition+`; filename="`+fileNameEscaper.Replace(filename)+`"`)
+
+		// Use RFC 2231 encoding to support special characters in filename
+		headerValue := util.FormatContentDispositionRFC2231(disposition, filename)
+		w.Header().Set("Content-Disposition", headerValue)
 	}
 }
 
