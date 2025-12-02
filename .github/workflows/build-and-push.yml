@@ -20,6 +20,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Free space
+      run: |
+        echo "Freeing disk space..."
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        docker system prune -af || true
     - uses: actions/checkout@v3
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
@@ -34,3 +42,8 @@ jobs:
     - name: Build and push Docker images
       run: |
         GOPROXY=https://proxy.golang.org,direct make ${{ github.event.inputs.build_type }}
+    - name: Cleanup Docker space after build
+      if: always()
+      run: |
+        docker system prune -af || true
+        docker builder prune -af || true
