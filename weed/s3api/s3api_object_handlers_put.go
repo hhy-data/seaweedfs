@@ -13,6 +13,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
 	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
 	"github.com/seaweedfs/seaweedfs/weed/security"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
@@ -119,7 +120,10 @@ func (s3a *S3ApiServer) putToFiler(r *http.Request, uploadUrl string, dataReader
 
 	proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
 	if destination != "" {
-		proxyReq.Header.Set(s3_constants.SeaweedStorageDestinationHeader, destination)
+		// Sanitize destination to remove control characters (0x00-0x1F, 0x7F)
+		// to comply with RFC 7230 HTTP header restrictions
+		safeDestination := util.SanitizeHttpHeaderValue(destination)
+		proxyReq.Header.Set(s3_constants.SeaweedStorageDestinationHeader, safeDestination)
 	}
 
 	if s3a.option.FilerGroup != "" {
