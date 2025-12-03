@@ -84,11 +84,10 @@ func TestMakeSafeFilenameFallback(t *testing.T) {
 			expected: "test_file_.jpg",
 		},
 		{
-{
-	name:     "filename with Chinese",
-	input:    "文档_2024.pdf",
-	expected: "__2024.pdf",
-},
+			name:     "filename with Chinese",
+			input:    "文档_2024.pdf",
+			expected: "___2024.pdf",
+		},
 		{
 			name:     "empty filename",
 			input:    "",
@@ -140,7 +139,7 @@ func TestFormatContentDispositionRFC2231(t *testing.T) {
 			name:        "filename with Chinese",
 			disposition: "inline",
 			filename:    "文档.pdf",
-			expected:    `inline; filename="文档.pdf"; filename*=UTF-8''%E6%96%87%E6%A1%A3.pdf`,
+			expected:    `inline; filename="__.pdf"; filename*=UTF-8''%E6%96%87%E6%A1%A3.pdf`,
 		},
 		{
 			name:        "Windows problematic filename",

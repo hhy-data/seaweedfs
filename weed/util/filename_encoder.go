@@ -84,6 +84,7 @@ func escapeQuotes(s string) string {
 // DecodeFilenameRFC2231 decodes a RFC 2231 encoded filename
 // Handles both regular filenames and percent-encoded filenames
 func DecodeFilenameRFC2231(encoded string) (string, error) {
+	original := encoded
 	// If it starts with charset encoding (e.g., "UTF-8''..."), strip it
 	if pos := strings.IndexByte(encoded, '\''); pos > 0 {
 		if pos2 := strings.IndexByte(encoded[pos+1:], '\''); pos2 >= 0 {
@@ -96,7 +97,7 @@ func DecodeFilenameRFC2231(encoded string) (string, error) {
 	decoded, err := url.PathUnescape(encoded)
 	if err != nil {
 		// If decoding fails, return original
-		return encoded, err
+		return original, err
 	}
 
 	return decoded, nil
