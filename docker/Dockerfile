@@ -1,4 +1,4 @@
-FROM --platform=${BUILDPLATFORM} vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/golang:1.23.2-bullseye as builder
+FROM --platform=${BUILDPLATFORM} vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/golang:1.24.1-bullseye as builder
 ARG TARGETARCH
 ARG TARGETOS
 
