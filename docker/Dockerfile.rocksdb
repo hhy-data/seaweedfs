@@ -1,4 +1,4 @@
-FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/golang:1.23.2-bullseye as builder
+FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/golang:1.24.1-bullseye as builder
 
 RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
 
@@ -9,8 +9,8 @@ RUN echo "deb http://mirrors.aliyun.com/debian/ bullseye main non-free contrib" 
 RUN apt-get update && \
     apt-get install -y build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev libzstd-dev
 
-ENV ROCKSDB_VERSION v9.3.1
-
+ARG ROCKSDB_VERSION=v10.5.1
+ENV ROCKSDB_VERSION=${ROCKSDB_VERSION}
 
 RUN wget https://github.com/facebook/rocksdb/archive/refs/tags/${ROCKSDB_VERSION}.tar.gz -O /tmp/rocksdb.tar.gz && \
     cd /tmp && \
