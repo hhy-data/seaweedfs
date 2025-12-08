@@ -16,21 +16,10 @@ RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
     go mod download
 
 COPY weed weed
+COPY telemetry telemetry
 
 RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
     go build -ldflags "$LDFLAGS" -tags "$GOBUILDTAGS" -o /weed ./weed
-
-RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
-    go build -ldflags "$LDFLAGS" -o /weed_pub_kv ./weed/mq/client/cmd/weed_pub_kv
-
-RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
-    go build -ldflags "$LDFLAGS" -o /weed_pub_record ./weed/mq/client/cmd/weed_pub_record
-
-RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
-    go build -ldflags "$LDFLAGS" -o /weed_sub_kv ./weed/mq/client/cmd/weed_sub_kv
-
-RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
-    go build -ldflags "$LDFLAGS" -o /weed_sub_record ./weed/mq/client/cmd/weed_sub_record
 
 FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/alpine:3.18.4 AS final
 
@@ -57,11 +46,13 @@ EXPOSE 8333
 # webdav server http port
 EXPOSE 7333
 
+RUN apk add --no-cache fuse snappy gflags su-exec shadow && \
+    groupadd -g 1000 seaweed && \
+    useradd -u 1000 -g seaweed -s /bin/bash -m seaweed
+
 COPY ./docker/entrypoint.sh /entrypoint.sh
 
 COPY --from=builder /weed /usr/bin/
-COPY --from=builder /weed_pub* /usr/bin/
-COPY --from=builder /weed_sub* /usr/bin/
 
 RUN chmod +x /entrypoint.sh
 
