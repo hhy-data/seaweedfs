@@ -17,22 +17,28 @@ const (
 	directoryStreamBaseOffset = 2 // . & ..
 )
 
+// DirectoryHandle represents an open directory handle.
+// It maintains state for directory listing pagination and is protected by a mutex
+// to handle concurrent readdir operations from NFS-Ganesha and other multi-threaded clients.
 type DirectoryHandle struct {
+	sync.Mutex
 	isFinished        bool
 	entryStream       []*filer.Entry
 	entryStreamOffset uint64
 }
 
 func (dh *DirectoryHandle) reset() {
-	*dh = DirectoryHandle{
-		isFinished:        false,
-		entryStream:       []*filer.Entry{},
-		entryStreamOffset: directoryStreamBaseOffset,
+	dh.isFinished = false
+	// Nil out pointers to allow garbage collection of old entries,
+	// then reuse the slice's capacity to avoid re-allocations.
+	for i := range dh.entryStream {
+		dh.entryStream[i] = nil
 	}
+	dh.entryStream = dh.entryStream[:0]
+	dh.entryStreamOffset = directoryStreamBaseOffset
 }
 
 type DirectoryHandleToInode struct {
-	// shares the file handle id sequencer with FileHandleToInode{nextFh}
 	sync.Mutex
 	dir2inode map[DirectoryHandleId]*DirectoryHandle
 }
@@ -44,14 +50,14 @@ func NewDirectoryHandleToInode() *DirectoryHandleToInode {
 }
 
 func (wfs *WFS) AcquireDirectoryHandle() (DirectoryHandleId, *DirectoryHandle) {
-	fh := FileHandleId(util.RandomUint64())
+	fh := DirectoryHandleId(util.RandomUint64())
 
 	wfs.dhMap.Lock()
 	defer wfs.dhMap.Unlock()
-	dh := new(DirectoryHandle)
+	dh := &DirectoryHandle{}
 	dh.reset()
-	wfs.dhMap.dir2inode[DirectoryHandleId(fh)] = dh
-	return DirectoryHandleId(fh), dh
+	wfs.dhMap.dir2inode[fh] = dh
+	return fh, dh
 }
 
 func (wfs *WFS) GetDirectoryHandle(dhid DirectoryHandleId) *DirectoryHandle {
@@ -60,7 +66,7 @@ func (wfs *WFS) GetDirectoryHandle(dhid DirectoryHandleId) *DirectoryHandle {
 	if dh, found := wfs.dhMap.dir2inode[dhid]; found {
 		return dh
 	}
-	dh := new(DirectoryHandle)
+	dh := &DirectoryHandle{}
 	dh.reset()
 	wfs.dhMap.dir2inode[dhid] = dh
 	return dh
@@ -136,7 +142,13 @@ func (wfs *WFS) ReadDirPlus(cancel <-chan struct{}, input *fuse.ReadIn, out *fus
 }
 
 func (wfs *WFS) doReadDirectory(input *fuse.ReadIn, out *fuse.DirEntryList, isPlusMode bool) fuse.Status {
+	// Get the directory handle and lock it for the duration of this operation.
+	// This serializes concurrent readdir calls on the same handle, fixing the
+	// race condition that caused hangs with NFS-Ganesha.
 	dh := wfs.GetDirectoryHandle(DirectoryHandleId(input.Fh))
+	dh.Lock()
+	defer dh.Unlock()
+
 	if input.Offset == 0 {
 		dh.reset()
 	} else if dh.isFinished && input.Offset >= dh.entryStreamOffset {
@@ -216,14 +228,16 @@ func (wfs *WFS) doReadDirectory(input *fuse.ReadIn, out *fuse.DirEntryList, isPl
 		}
 	}
 
-	var err error
-	if err = meta_cache.EnsureVisited(wfs.metaCache, wfs, dirPath); err != nil {
+	if err := meta_cache.EnsureVisited(wfs.metaCache, wfs, dirPath); err != nil {
 		glog.Errorf("dir ReadDirAll %s: %v", dirPath, err)
 		return fuse.EIO
 	}
 	listErr := wfs.metaCache.ListDirectoryEntries(context.Background(), dirPath, lastEntryName, false, int64(math.MaxInt32), func(entry *filer.Entry) bool {
 		dh.entryStream = append(dh.entryStream, entry)
-		return processEachEntryFn(entry)
+		if !processEachEntryFn(entry) {
+			return false, nil
+		}
+		return true, nil
 	})
 	if listErr != nil {
 		glog.Errorf("list meta cache: %v", listErr)
