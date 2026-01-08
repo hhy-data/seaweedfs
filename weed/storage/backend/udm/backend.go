@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	superBlockSize  = 8
-	volumeCachePath = ".udm_cache"
-	separator       = "::"
+	superBlockSize       = 8
+	volumeCachePath      = ".udm_cache"
+	transRecallCachePath = "trans_recall_cache"
+	separator            = "::"
 )
 
 func init() {
@@ -138,12 +139,13 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	path := getPathFromKey(f.key)
-	cacheFile := buildInternalCacheFilePath(path)
+	cacheFile, subPathInVolumeCache := buildTransRecallCacheFilePath(path)
 	_, err = os.Stat(cacheFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			glog.V(0).Infof("file %s does not exist in cache, downloading from remote", path)
-			err = f.downloadFile(cacheFile, path)
+			shortName := filepath.Base(path)
+			err = f.backendStorage.client.DownloadFile(context.TODO(), subPathInVolumeCache, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
 			if err != nil {
 				glog.V(0).Infof("failed to download file %s, err: %v", path, err)
 				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
@@ -177,12 +179,6 @@ func (f *backendStorageFile) readAtInternalCache(path string, p []byte, off int6
 	}
 
 	return
-}
-
-func (f *backendStorageFile) downloadFile(cacheFile, path string) error {
-	shortName := filepath.Base(path)
-
-	return f.backendStorage.client.DownloadFile(context.TODO(), shortName, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
 }
 
 func (f *backendStorageFile) WriteAt(p []byte, off int64) (n int, err error) {
@@ -312,6 +308,12 @@ func deleteFileInInternalCache(key string) error {
 func buildInternalCacheFilePath(path string) string {
 	filePath, fileName := filepath.Dir(path), filepath.Base(path)
 	return filepath.Join(filePath, volumeCachePath, fileName)
+}
+
+func buildTransRecallCacheFilePath(path string) (string, string) {
+	filePath, fileName := filepath.Dir(path), filepath.Base(path)
+	subPath := filepath.Join(transRecallCachePath, fileName)
+	return filepath.Join(filePath, volumeCachePath, subPath), subPath
 }
 
 func readSuperBlock(filePath string) ([]byte, error) {
