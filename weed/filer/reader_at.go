@@ -69,7 +69,7 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 		fcDataCenter := filerClient.GetDataCenter()
 		var sameDcTargetUrls, otherTargetUrls []string
 		localUrls := make(map[string]bool)
-		urlOfServer := make(map[string]string)
+		serverOfUrl := make(map[string]string)
 		for _, loc := range locations.Locations {
 			volumeServerAddress := filerClient.AdjustedUrl(loc)
 			targetUrl := fmt.Sprintf("http://%s/%s", volumeServerAddress, fileId)
@@ -83,7 +83,7 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 			} else {
 				sameDcTargetUrls = append(sameDcTargetUrls, targetUrl)
 			}
-			urlOfServer[targetUrl] = volumeServerAddress
+			serverOfUrl[targetUrl] = volumeServerAddress
 		}
 		if len(localUrls) == 0 {
 			// if all loc are remote,
@@ -91,8 +91,8 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 			// so that no need to download from remote multipe times
 			// vid is included for even distribution
 
-			deterministicSort(sameDcTargetUrls, urlOfServer, vid)
-			deterministicSort(otherTargetUrls, urlOfServer, vid)
+			deterministicSort(sameDcTargetUrls, serverOfUrl, vid)
+			deterministicSort(otherTargetUrls, serverOfUrl, vid)
 		} else {
 			rand.Shuffle(len(sameDcTargetUrls), func(i, j int) {
 				sameDcTargetUrls[i], sameDcTargetUrls[j] = sameDcTargetUrls[j], sameDcTargetUrls[i]
@@ -113,13 +113,13 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 	}
 }
 
-func deterministicSort(urls []string, urlOfServer map[string]string, vid string) {
+func deterministicSort(urls []string, serverOfUrl map[string]string, vid string) {
 	urlsHash := make(map[string]uint64)
 	for _, url := range urls {
 		hasher := fnv.New64a()
 		hasher.Write([]byte(vid))
 		hasher.Write([]byte("#"))
-		hasher.Write([]byte(urlOfServer[url]))
+		hasher.Write([]byte(serverOfUrl[url]))
 		urlsHash[url] = hasher.Sum64()
 	}
 	slices.SortFunc(urls, func(i, j string) int {
@@ -127,6 +127,12 @@ func deterministicSort(urls []string, urlOfServer map[string]string, vid string)
 		if hi < hj {
 			return -1
 		} else if hi > hj {
+			return 1
+		}
+		if i < j {
+			return -1
+		}
+		if i > j {
 			return 1
 		}
 		return 0
