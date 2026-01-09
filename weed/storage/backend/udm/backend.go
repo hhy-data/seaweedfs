@@ -145,7 +145,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 		if os.IsNotExist(err) {
 			glog.V(0).Infof("file %s does not exist in cache, downloading from remote", path)
 			shortName := filepath.Base(path)
-			err = f.backendStorage.client.DownloadFile(context.TODO(), subPathInVolumeCache, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
+			err = f.backendStorage.client.DownloadFile(context.Background(), subPathInVolumeCache, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
 			if err != nil {
 				glog.V(0).Infof("failed to download file %s, err: %v", path, err)
 				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
