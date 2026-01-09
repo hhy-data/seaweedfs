@@ -1,6 +1,7 @@
 package filer
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"hash/fnv"
@@ -115,27 +116,20 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 
 func deterministicSort(urls []string, serverOfUrl map[string]string, vid string) {
 	urlsHash := make(map[string]uint64)
+	hasher := fnv.New64a()
 	for _, url := range urls {
-		hasher := fnv.New64a()
+		hasher.Reset()
 		hasher.Write([]byte(vid))
 		hasher.Write([]byte("#"))
 		hasher.Write([]byte(serverOfUrl[url]))
 		urlsHash[url] = hasher.Sum64()
 	}
-	slices.SortFunc(urls, func(i, j string) int {
-		hi, hj := urlsHash[i], urlsHash[j]
-		if hi < hj {
-			return -1
-		} else if hi > hj {
-			return 1
+	slices.SortFunc(urls, func(a, b string) int {
+		ha, hb := urlsHash[a], urlsHash[b]
+		if c := cmp.Compare(ha, hb); c != 0 {
+			return c
 		}
-		if i < j {
-			return -1
-		}
-		if i > j {
-			return 1
-		}
-		return 0
+		return cmp.Compare(a, b)
 	})
 }
 
