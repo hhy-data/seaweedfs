@@ -3,8 +3,10 @@ package filer
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math/rand"
+	"slices"
 	"sync"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -67,6 +69,7 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 		fcDataCenter := filerClient.GetDataCenter()
 		var sameDcTargetUrls, otherTargetUrls []string
 		localUrls := make(map[string]bool)
+		urlOfServer := make(map[string]string)
 		for _, loc := range locations.Locations {
 			volumeServerAddress := filerClient.AdjustedUrl(loc)
 			targetUrl := fmt.Sprintf("http://%s/%s", volumeServerAddress, fileId)
@@ -80,23 +83,54 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 			} else {
 				sameDcTargetUrls = append(sameDcTargetUrls, targetUrl)
 			}
+			urlOfServer[targetUrl] = volumeServerAddress
 		}
-		rand.Shuffle(len(sameDcTargetUrls), func(i, j int) {
-			sameDcTargetUrls[i], sameDcTargetUrls[j] = sameDcTargetUrls[j], sameDcTargetUrls[i]
-		})
-		rand.Shuffle(len(otherTargetUrls), func(i, j int) {
-			otherTargetUrls[i], otherTargetUrls[j] = otherTargetUrls[j], otherTargetUrls[i]
-		})
-		if len(localUrls) > 0 && len(localUrls) != len(sameDcTargetUrls) {
-			sameDcTargetUrls = util.ReorderToFront(localUrls, sameDcTargetUrls)
-		}
-		if len(localUrls) > 0 && len(localUrls) != len(otherTargetUrls) {
-			otherTargetUrls = util.ReorderToFront(localUrls, otherTargetUrls)
+		if len(localUrls) == 0 {
+			// if all loc are remote,
+			// use a deterministic ordering based on volserver and vid
+			// so that no need to download from remote multipe times
+			// vid is included for even distribution
+
+			deterministicSort(sameDcTargetUrls, urlOfServer, vid)
+			deterministicSort(otherTargetUrls, urlOfServer, vid)
+		} else {
+			rand.Shuffle(len(sameDcTargetUrls), func(i, j int) {
+				sameDcTargetUrls[i], sameDcTargetUrls[j] = sameDcTargetUrls[j], sameDcTargetUrls[i]
+			})
+			rand.Shuffle(len(otherTargetUrls), func(i, j int) {
+				otherTargetUrls[i], otherTargetUrls[j] = otherTargetUrls[j], otherTargetUrls[i]
+			})
+			if len(localUrls) != len(sameDcTargetUrls) {
+				sameDcTargetUrls = util.ReorderToFront(localUrls, sameDcTargetUrls)
+			}
+			if len(localUrls) != len(otherTargetUrls) {
+				otherTargetUrls = util.ReorderToFront(localUrls, otherTargetUrls)
+			}
 		}
 		// Prefer same data center
 		targetUrls = append(sameDcTargetUrls, otherTargetUrls...)
 		return
 	}
+}
+
+func deterministicSort(urls []string, urlOfServer map[string]string, vid string) {
+	urlsHash := make(map[string]uint64)
+	for _, url := range urls {
+		hasher := fnv.New64a()
+		hasher.Write([]byte(vid))
+		hasher.Write([]byte("#"))
+		hasher.Write([]byte(urlOfServer[url]))
+		urlsHash[url] = hasher.Sum64()
+	}
+	slices.SortFunc(urls, func(i, j string) int {
+		hi, hj := urlsHash[i], urlsHash[j]
+		if hi < hj {
+			return -1
+		} else if hi > hj {
+			return 1
+		}
+		return 0
+	})
 }
 
 func NewChunkReaderAtFromClient(readerCache *ReaderCache, chunkViews *IntervalList[*ChunkView], fileSize int64) *ChunkReadAt {
