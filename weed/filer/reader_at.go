@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"math/rand"
 	"slices"
 	"sync"
 
@@ -86,27 +85,17 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 			}
 			serverOfUrl[targetUrl] = volumeServerAddress
 		}
-		if len(localUrls) == 0 {
-			// if all loc are remote,
-			// use a deterministic ordering based on volserver and vid
-			// so that no need to download from remote multipe times
-			// vid is included for even distribution
+		// use a deterministic ordering based on volserver and vid
+		// so that no need to download from remote multipe times
+		// vid is included for even distribution
 
-			deterministicSort(sameDcTargetUrls, serverOfUrl, vid)
-			deterministicSort(otherTargetUrls, serverOfUrl, vid)
-		} else {
-			rand.Shuffle(len(sameDcTargetUrls), func(i, j int) {
-				sameDcTargetUrls[i], sameDcTargetUrls[j] = sameDcTargetUrls[j], sameDcTargetUrls[i]
-			})
-			rand.Shuffle(len(otherTargetUrls), func(i, j int) {
-				otherTargetUrls[i], otherTargetUrls[j] = otherTargetUrls[j], otherTargetUrls[i]
-			})
-			if len(localUrls) != len(sameDcTargetUrls) {
-				sameDcTargetUrls = util.ReorderToFront(localUrls, sameDcTargetUrls)
-			}
-			if len(localUrls) != len(otherTargetUrls) {
-				otherTargetUrls = util.ReorderToFront(localUrls, otherTargetUrls)
-			}
+		deterministicSort(sameDcTargetUrls, serverOfUrl, vid)
+		deterministicSort(otherTargetUrls, serverOfUrl, vid)
+		if len(localUrls) > 0 && len(localUrls) != len(sameDcTargetUrls) {
+			sameDcTargetUrls = util.ReorderToFront(localUrls, sameDcTargetUrls)
+		}
+		if len(localUrls) > 0 && len(localUrls) != len(otherTargetUrls) {
+			otherTargetUrls = util.ReorderToFront(localUrls, otherTargetUrls)
 		}
 		// Prefer same data center
 		targetUrls = append(sameDcTargetUrls, otherTargetUrls...)
