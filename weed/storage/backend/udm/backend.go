@@ -164,7 +164,7 @@ func (f *backendStorageFile) readAtInternalCache(path string, p []byte, off int6
 		return
 	}
 
-	defer f.Close()
+	defer file.Close()
 
 	n, err = file.ReadAt(p, off)
 	if err == io.EOF {
