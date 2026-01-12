@@ -144,6 +144,8 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	udmCacheFile := buildInternalCacheFilePath(path)
 	if _, err = os.Stat(udmCacheFile); err == nil {
 		return f.readAtInternalCache(udmCacheFile, p, off)
+	} else if !os.IsNotExist(err) {
+		glog.V(0).Infof("failed to stat file in internal cache %s, will try trans recall cache, err: %v", udmCacheFile, err)
 	}
 
 	cacheFile, subPathInVolumeCache := buildTransRecallCacheFilePath(path)
