@@ -139,15 +139,24 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	path := getPathFromKey(f.key)
+
+	// First try UDM cache to avoid unnecessary downloads.
+	udmCacheFile := buildInternalCacheFilePath(path)
+	if _, err = os.Stat(udmCacheFile); err == nil {
+		return f.readAtInternalCache(udmCacheFile, p, off)
+	} else if !os.IsNotExist(err) {
+		glog.Warningf("failed to stat file in internal cache %s, will try trans recall cache, err: %v", udmCacheFile, err)
+	}
+
 	cacheFile, subPathInVolumeCache := buildTransRecallCacheFilePath(path)
 	_, err = os.Stat(cacheFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			glog.V(0).Infof("file %s does not exist in cache, downloading from remote", path)
+			glog.Warningf("file %s does not exist in trans recall cache, downloading from remote", path)
 			shortName := filepath.Base(path)
 			err = f.backendStorage.client.DownloadFile(context.Background(), subPathInVolumeCache, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
 			if err != nil {
-				glog.V(0).Infof("failed to download file %s, err: %v", path, err)
+				glog.Errorf("failed to download file %s, err: %v", path, err)
 				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
 			}
 		} else {
