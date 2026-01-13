@@ -1,10 +1,12 @@
 package filer
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"hash/fnv"
 	"io"
-	"math/rand"
+	"slices"
 	"sync"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -67,6 +69,7 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 		fcDataCenter := filerClient.GetDataCenter()
 		var sameDcTargetUrls, otherTargetUrls []string
 		localUrls := make(map[string]bool)
+		serverOfUrl := make(map[string]string)
 		for _, loc := range locations.Locations {
 			volumeServerAddress := filerClient.AdjustedUrl(loc)
 			targetUrl := fmt.Sprintf("http://%s/%s", volumeServerAddress, fileId)
@@ -80,13 +83,14 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 			} else {
 				sameDcTargetUrls = append(sameDcTargetUrls, targetUrl)
 			}
+			serverOfUrl[targetUrl] = volumeServerAddress
 		}
-		rand.Shuffle(len(sameDcTargetUrls), func(i, j int) {
-			sameDcTargetUrls[i], sameDcTargetUrls[j] = sameDcTargetUrls[j], sameDcTargetUrls[i]
-		})
-		rand.Shuffle(len(otherTargetUrls), func(i, j int) {
-			otherTargetUrls[i], otherTargetUrls[j] = otherTargetUrls[j], otherTargetUrls[i]
-		})
+		// use a deterministic ordering based on volserver and vid
+		// so that no need to download from remote multipe times
+		// vid is included for even distribution
+
+		deterministicSort(sameDcTargetUrls, serverOfUrl, vid)
+		deterministicSort(otherTargetUrls, serverOfUrl, vid)
 		if len(localUrls) > 0 && len(localUrls) != len(sameDcTargetUrls) {
 			sameDcTargetUrls = util.ReorderToFront(localUrls, sameDcTargetUrls)
 		}
@@ -97,6 +101,25 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 		targetUrls = append(sameDcTargetUrls, otherTargetUrls...)
 		return
 	}
+}
+
+func deterministicSort(urls []string, serverOfUrl map[string]string, vid string) {
+	urlsHash := make(map[string]uint64)
+	hasher := fnv.New64a()
+	for _, url := range urls {
+		hasher.Reset()
+		hasher.Write([]byte(vid))
+		hasher.Write([]byte("#"))
+		hasher.Write([]byte(serverOfUrl[url]))
+		urlsHash[url] = hasher.Sum64()
+	}
+	slices.SortFunc(urls, func(a, b string) int {
+		ha, hb := urlsHash[a], urlsHash[b]
+		if c := cmp.Compare(ha, hb); c != 0 {
+			return c
+		}
+		return cmp.Compare(a, b)
+	})
 }
 
 func NewChunkReaderAtFromClient(readerCache *ReaderCache, chunkViews *IntervalList[*ChunkView], fileSize int64) *ChunkReadAt {
