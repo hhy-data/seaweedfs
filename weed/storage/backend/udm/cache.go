@@ -79,17 +79,6 @@ func (c *lruCache) UpdateAccess(filePath string) {
 	}
 }
 
-// Remove Removes specified file's cache record
-//func (c *lruCache) Remove(filePath string) {
-//	c.mutex.Lock()
-//	defer c.mutex.Unlock()
-//
-//	if elem, exists := c.mapping[filePath]; exists {
-//		c.list.Remove(elem)
-//		delete(c.mapping, filePath)
-//	}
-//}
-
 // GetTotalSize Gets total size of all files in cache
 func (c *lruCache) getTotalSize() int64 {
 	c.mutex.RLock()

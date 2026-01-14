@@ -23,6 +23,7 @@ const (
 	volumeCachePath      = ".udm_cache"
 	transRecallCachePath = "trans_recall_cache"
 	separator            = "::"
+	cacheCleanupInterval = 5 * time.Minute
 )
 
 func init() {
@@ -89,7 +90,7 @@ func newBackendStorage(configuration backend.StringProperties, configPrefix stri
 }
 
 func (s *BackendStorage) cleanUpCache() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(cacheCleanupInterval)
 	defer ticker.Stop()
 
 	for {
