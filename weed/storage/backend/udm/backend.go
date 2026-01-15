@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -21,6 +23,7 @@ const (
 	volumeCachePath      = ".udm_cache"
 	transRecallCachePath = "trans_recall_cache"
 	separator            = "::"
+	cacheCleanupInterval = 5 * time.Minute
 )
 
 func init() {
@@ -40,29 +43,65 @@ func (factory *backendFactory) BuildStorage(configuration backend.StringProperti
 }
 
 type BackendStorage struct {
+	ctx          context.Context
 	id           string
 	grpcServer   string
 	readDisabled bool
 	client       *ClientSet
+
+	cache *lruCache
 }
 
 func newBackendStorage(configuration backend.StringProperties, configPrefix string, id string) (*BackendStorage, error) {
 	grpcServer := configuration.GetString(configPrefix + "grpc_server")
 	readDisabled, _ := strconv.ParseBool(configuration.GetString(configPrefix + "read_disabled"))
 
+	cache, err := newLRUCache(findTransRecallCachePath())
+	if err != nil {
+		return nil, err
+	}
+
 	cl, err := NewClient(grpcServer)
 	if err != nil {
 		return nil, err
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-ctx.Done()
+		stop()
+		_ = cl.Close()
+	}()
+
 	glog.V(0).Infof("Adding backend storage: %s.%s", storageType, id)
 
-	return &BackendStorage{
+	res := &BackendStorage{
+		ctx:          ctx,
 		id:           id,
 		client:       cl,
 		grpcServer:   grpcServer,
 		readDisabled: readDisabled,
-	}, nil
+		cache:        cache,
+	}
+
+	go res.cleanUpCache()
+
+	return res, nil
+}
+
+func (s *BackendStorage) cleanUpCache() {
+	ticker := time.NewTicker(cacheCleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.cache.Cleanup()
+		case <-s.ctx.Done():
+			glog.V(0).Infof("Stopping periodic cache cleanup for backend storage: %s.%s", storageType, s.id)
+			return
+		}
+	}
 }
 
 func (s *BackendStorage) ToProperties() map[string]string {
@@ -154,7 +193,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 		if os.IsNotExist(err) {
 			glog.Warningf("file %s does not exist in trans recall cache, downloading from remote", path)
 			shortName := filepath.Base(path)
-			err = f.backendStorage.client.DownloadFile(context.Background(), subPathInVolumeCache, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
+			err = f.backendStorage.client.DownloadFile(f.backendStorage.ctx, subPathInVolumeCache, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
 			if err != nil {
 				glog.Errorf("failed to download file %s, err: %v", path, err)
 				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
@@ -163,6 +202,8 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 			return 0, fmt.Errorf("failed to stat file %s, err: %w", path, err)
 		}
 	}
+
+	defer f.backendStorage.cache.UpdateAccess(cacheFile)
 
 	return f.readAtInternalCache(cacheFile, p, off)
 }
@@ -345,4 +386,29 @@ func readSuperBlock(filePath string) ([]byte, error) {
 
 func isSuperBlock(offset int64, length int) bool {
 	return offset == 0 && length == superBlockSize
+}
+
+func findTransRecallCachePath() string {
+	var foundPath string
+
+	_ = filepath.WalkDir("/", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			// Ignore access errors and continue traversal
+			return nil
+		}
+
+		if !d.IsDir() {
+			return nil
+		}
+
+		if d.Name() == transRecallCachePath {
+			foundPath = path
+			// Stop traversal after finding the first match
+			return filepath.SkipAll
+		}
+
+		return nil
+	})
+
+	return foundPath
 }
