@@ -197,8 +197,7 @@ func (c *lruCache) initializeWithMTime(path string) error {
 	// Collect file information and sort by modification time
 	var files []*lruCacheEntry
 	for _, entry := range entries {
-		// Only process files, skip subdirectories
-		if entry.IsDir() {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != "dat" {
 			continue
 		}
 
