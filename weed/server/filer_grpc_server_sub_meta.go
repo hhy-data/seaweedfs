@@ -81,9 +81,7 @@ func (fs *FilerServer) SubscribeMetadata(req *filer_pb.SubscribeMetadataRequest,
 		glog.V(4).Infof("read in memory %v aggregated subscribe %s from %+v", clientName, req.PathPrefix, lastReadTime)
 
 		lastReadTime, isDone, readInMemoryLogErr = fs.filer.MetaAggregator.MetaLogBuffer.LoopProcessLogData("aggMeta:"+clientName, lastReadTime, req.UntilNs, func() bool {
-			fs.filer.MetaAggregator.ListenersLock.Lock()
 			fs.filer.MetaAggregator.ListenersCond.Wait()
-			fs.filer.MetaAggregator.ListenersLock.Unlock()
 			return fs.hasClient(req.ClientId, req.ClientEpoch)
 		}, eachLogEntryFn)
 		if readInMemoryLogErr != nil {
@@ -165,11 +163,9 @@ func (fs *FilerServer) SubscribeLocalMetadata(req *filer_pb.SubscribeMetadataReq
 		glog.V(0).Infof("read in memory %v local subscribe %s from %+v", clientName, req.PathPrefix, lastReadTime)
 
 		lastReadTime, isDone, readInMemoryLogErr = fs.filer.LocalMetaLogBuffer.LoopProcessLogData("localMeta:"+clientName, lastReadTime, req.UntilNs, func() bool {
-			fs.listenersLock.Lock()
 			atomic.AddInt64(&fs.listenersWaits, 1)
 			fs.listenersCond.Wait()
 			atomic.AddInt64(&fs.listenersWaits, -1)
-			fs.listenersLock.Unlock()
 			if !fs.hasClient(req.ClientId, req.ClientEpoch) {
 				return false
 			}
