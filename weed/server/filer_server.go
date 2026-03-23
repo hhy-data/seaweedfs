@@ -83,7 +83,6 @@ type FilerServer struct {
 	listenersWaits   int64
 
 	// notifying clients
-	listenersLock sync.Mutex
 	listenersCond *sync.Cond
 
 	inFlightDataLimitCond *sync.Cond
@@ -145,7 +144,6 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 		knownListeners:        make(map[int32]int32),
 		inFlightDataLimitCond: sync.NewCond(new(sync.Mutex)),
 	}
-	fs.listenersCond = sync.NewCond(&fs.listenersLock)
 
 	option.Masters.RefreshBySrvIfAvailable()
 	if len(option.Masters.GetInstances()) == 0 {
@@ -173,6 +171,7 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 			fs.listenersCond.Broadcast()
 		}
 	})
+	fs.listenersCond = sync.NewCond(&fs.filer.LocalMetaLogBuffer.RWMutex)
 	fs.filer.Cipher = option.Cipher
 	// we do not support IP whitelist right now
 	fs.filerGuard = security.NewGuard([]string{}, signingKey, expiresAfterSec, readSigningKey, readExpiresAfterSec)

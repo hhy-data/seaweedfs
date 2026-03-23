@@ -3,6 +3,10 @@ package topic
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/mq_pb"
@@ -10,9 +14,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 type LocalPartition struct {
@@ -20,7 +21,6 @@ type LocalPartition struct {
 	AckTsNs        int64
 
 	// notifying clients
-	ListenersLock sync.Mutex
 	ListenersCond *sync.Cond
 
 	Partition
@@ -41,13 +41,14 @@ func NewLocalPartition(partition Partition, logFlushFn log_buffer.LogFlushFuncTy
 		Publishers:  NewLocalPartitionPublishers(),
 		Subscribers: NewLocalPartitionSubscribers(),
 	}
-	lp.ListenersCond = sync.NewCond(&lp.ListenersLock)
+
 	lp.LogBuffer = log_buffer.NewLogBuffer(fmt.Sprintf("%d/%04d-%04d", partition.UnixTimeNs, partition.RangeStart, partition.RangeStop),
 		2*time.Minute, logFlushFn, readFromDiskFn, func() {
 			if atomic.LoadInt64(&lp.ListenersWaits) > 0 {
 				lp.ListenersCond.Broadcast()
 			}
 		})
+	lp.ListenersCond = sync.NewCond(&lp.LogBuffer.RWMutex)
 	return lp
 }
 

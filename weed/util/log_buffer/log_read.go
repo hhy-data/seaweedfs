@@ -34,6 +34,7 @@ func (logBuffer *LogBuffer) LoopProcessLogData(readerName string, startPosition 
 	// loop through all messages
 	var bytesBuf *bytes.Buffer
 	var batchIndex int64
+	var lastTsNs int64
 	lastReadPosition = startPosition
 	var entryCounter int64
 	defer func() {
@@ -48,7 +49,7 @@ func (logBuffer *LogBuffer) LoopProcessLogData(readerName string, startPosition 
 		if bytesBuf != nil {
 			logBuffer.ReleaseMemory(bytesBuf)
 		}
-		bytesBuf, batchIndex, err = logBuffer.ReadFromBuffer(lastReadPosition)
+		bytesBuf, batchIndex, lastTsNs, err = logBuffer.ReadFromBuffer(lastReadPosition)
 		if err == ResumeFromDiskError {
 			time.Sleep(1127 * time.Millisecond)
 			return lastReadPosition, isDone, ResumeFromDiskError
@@ -66,23 +67,17 @@ func (logBuffer *LogBuffer) LoopProcessLogData(readerName string, startPosition 
 				isDone = true
 				return
 			}
-			logBuffer.RLock()
-			lastTsNs := logBuffer.LastTsNs
-			logBuffer.RUnlock()
-			loopTsNs := lastTsNs // make a copy
 
-			for lastTsNs == loopTsNs {
-				if waitForDataFn() {
-					// Update loopTsNs and loop again
-					logBuffer.RLock()
-					loopTsNs = logBuffer.LastTsNs
-					logBuffer.RUnlock()
-					continue
-				} else {
+			logBuffer.Lock()
+			for lastTsNs == logBuffer.LastTsNs {
+				if !waitForDataFn() {
 					isDone = true
+					logBuffer.Unlock()
 					return
 				}
 			}
+			logBuffer.Unlock()
+
 			if logBuffer.IsStopping() {
 				isDone = true
 				return
