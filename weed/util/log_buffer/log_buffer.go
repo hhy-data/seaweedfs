@@ -229,7 +229,7 @@ func (d *dataToFlush) releaseMemory() {
 	bufferPool.Put(d.data)
 }
 
-func (logBuffer *LogBuffer) ReadFromBuffer(lastReadPosition MessagePosition) (bufferCopy *bytes.Buffer, batchIndex int64, err error) {
+func (logBuffer *LogBuffer) ReadFromBuffer(lastReadPosition MessagePosition) (bufferCopy *bytes.Buffer, batchIndex, LastTsNs int64, err error) {
 	logBuffer.RLock()
 	defer logBuffer.RUnlock()
 
@@ -256,39 +256,37 @@ func (logBuffer *LogBuffer) ReadFromBuffer(lastReadPosition MessagePosition) (bu
 	}
 	if tsMemory.IsZero() { // case 2.2
 		// println("2.2 no data")
-		return nil, -2, nil
+		return nil, -2, logBuffer.LastTsNs, nil
 	} else if lastReadPosition.Before(tsMemory) && lastReadPosition.BatchIndex+1 < tsBatchIndex { // case 2.3
 		if !logBuffer.lastFlushDataTime.IsZero() {
 			glog.V(0).Infof("resume with last flush time: %v", logBuffer.lastFlushDataTime)
-			return nil, -2, ResumeFromDiskError
+			return nil, -2, logBuffer.LastTsNs, ResumeFromDiskError
 		}
 	}
 
 	// the following is case 2.1
 
-	if lastReadPosition.Equal(logBuffer.stopTime) {
-		return nil, logBuffer.batchIndex, nil
-	}
-	if lastReadPosition.After(logBuffer.stopTime) {
-		// glog.Fatalf("unexpected last read time %v, older than latest %v", lastReadPosition, m.stopTime)
-		return nil, logBuffer.batchIndex, nil
-	}
-	if lastReadPosition.Before(logBuffer.startTime) {
-		// println("checking ", lastReadPosition.UnixNano())
-		for _, buf := range logBuffer.prevBuffers.buffers {
-			if buf.startTime.After(lastReadPosition.Time) {
-				// glog.V(4).Infof("%s return the %d sealed buffer %v", m.name, i, buf.startTime)
-				// println("return the", i, "th in memory", buf.startTime.UnixNano())
-				return copiedBytes(buf.buf[:buf.size]), buf.batchIndex, nil
-			}
-			if !buf.startTime.After(lastReadPosition.Time) && buf.stopTime.After(lastReadPosition.Time) {
-				pos := buf.locateByTs(lastReadPosition.Time)
-				// fmt.Printf("locate buffer[%d] pos %d\n", i, pos)
-				return copiedBytes(buf.buf[pos:buf.size]), buf.batchIndex, nil
+	// Check prevBuffers first because current buffer may have been flushed
+	// When buffer is flushed, stopTime and startTime is reset to 0, but prevBuffers still has data
+	for _, buf := range logBuffer.prevBuffers.buffers {
+		if buf.stopTime.After(lastReadPosition.Time) {
+			// Found buffer with data after lastReadPosition
+			pos := buf.locateByTs(lastReadPosition.Time)
+			if pos < buf.size {
+				return copiedBytes(buf.buf[pos:buf.size]), buf.batchIndex, logBuffer.LastTsNs, nil
 			}
 		}
-		// glog.V(4).Infof("%s return the current buf %v", m.name, lastReadPosition)
-		return copiedBytes(logBuffer.buf[:logBuffer.pos]), logBuffer.batchIndex, nil
+	}
+
+	// No more data in prevBuffers, check if we've reached the end of current buffer
+	// If lastReadPosition >= stopTime, it means we've processed all events up to stopTime
+	if !lastReadPosition.Before(logBuffer.stopTime) {
+		return nil, logBuffer.batchIndex, logBuffer.LastTsNs, nil
+	}
+
+	if lastReadPosition.Before(logBuffer.startTime) {
+		// println("checking ", lastReadPosition.UnixNano())
+		return copiedBytes(logBuffer.buf[:logBuffer.pos]), logBuffer.batchIndex, logBuffer.LastTsNs, nil
 	}
 
 	lastTs := lastReadPosition.UnixNano()
@@ -321,7 +319,7 @@ func (logBuffer *LogBuffer) ReadFromBuffer(lastReadPosition MessagePosition) (bu
 			}
 			if prevT <= lastTs {
 				// fmt.Printf("found l=%d, m-1=%d(ts=%d), m=%d(ts=%d), h=%d [%d, %d) \n", l, mid-1, prevT, mid, t, h, pos, m.pos)
-				return copiedBytes(logBuffer.buf[pos:logBuffer.pos]), logBuffer.batchIndex, nil
+				return copiedBytes(logBuffer.buf[pos:logBuffer.pos]), logBuffer.batchIndex, logBuffer.LastTsNs, nil
 			}
 			h = mid
 		}
@@ -330,9 +328,9 @@ func (logBuffer *LogBuffer) ReadFromBuffer(lastReadPosition MessagePosition) (bu
 
 	// FIXME: this could be that the buffer has been flushed already
 	println("Not sure why no data", lastReadPosition.BatchIndex, tsBatchIndex)
-	return nil, -2, nil
-
+	return nil, -2, logBuffer.LastTsNs, nil
 }
+
 func (logBuffer *LogBuffer) ReleaseMemory(b *bytes.Buffer) {
 	bufferPool.Put(b)
 }

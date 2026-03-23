@@ -3,8 +3,6 @@ package filer
 import (
 	"context"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
-	"github.com/seaweedfs/seaweedfs/weed/util"
 	"io"
 	"strings"
 	"sync"
@@ -17,6 +15,8 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 	"github.com/seaweedfs/seaweedfs/weed/util/log_buffer"
 )
 
@@ -29,7 +29,6 @@ type MetaAggregator struct {
 	peerChans      map[pb.ServerAddress]chan struct{}
 	peerChansLock  sync.Mutex
 	// notifying clients
-	ListenersLock sync.Mutex
 	ListenersCond *sync.Cond
 }
 
@@ -42,10 +41,10 @@ func NewMetaAggregator(filer *Filer, self pb.ServerAddress, grpcDialOption grpc.
 		grpcDialOption: grpcDialOption,
 		peerChans:      make(map[pb.ServerAddress]chan struct{}),
 	}
-	t.ListenersCond = sync.NewCond(&t.ListenersLock)
 	t.MetaLogBuffer = log_buffer.NewLogBuffer("aggr", LogFlushInterval, nil, nil, func() {
 		t.ListenersCond.Broadcast()
 	})
+	t.ListenersCond = sync.NewCond(&t.MetaLogBuffer.RWMutex)
 	return t
 }
 
