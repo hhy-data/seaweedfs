@@ -244,7 +244,7 @@ func (ms *MasterServer) VolumeList(ctx context.Context, req *master_pb.VolumeLis
 	}
 
 	resp := &master_pb.VolumeListResponse{
-		TopologyInfo:      ms.Topo.ToTopologyInfo(),
+		TopologyInfo:      ms.Topo.ToTopologyInfo(req.WithoutVolumes),
 		VolumeSizeLimitMb: uint64(ms.option.VolumeSizeLimitMB),
 	}
 
