@@ -344,6 +344,7 @@ message TopologyInfo {
   map<string, DiskInfo> diskInfos = 3;
 }
 message VolumeListRequest {
+  bool without_volumes = 1;
 }
 message VolumeListResponse {
   TopologyInfo topology_info = 1;

@@ -2476,9 +2476,10 @@ func (x *TopologyInfo) GetDiskInfos() map[string]*DiskInfo {
 }
 
 type VolumeListRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	WithoutVolumes bool                   `protobuf:"varint,1,opt,name=without_volumes,json=withoutVolumes,proto3" json:"without_volumes,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *VolumeListRequest) Reset() {
@@ -2509,6 +2510,13 @@ func (x *VolumeListRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use VolumeListRequest.ProtoReflect.Descriptor instead.
 func (*VolumeListRequest) Descriptor() ([]byte, []int) {
 	return file_master_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *VolumeListRequest) GetWithoutVolumes() bool {
+	if x != nil {
+		return x.WithoutVolumes
+	}
+	return false
 }
 
 type VolumeListResponse struct {
@@ -4642,8 +4650,9 @@ const file_master_proto_rawDesc = "" +
 	"\tdiskInfos\x18\x03 \x03(\v2&.master_pb.TopologyInfo.DiskInfosEntryR\tdiskInfos\x1aQ\n" +
 	"\x0eDiskInfosEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.master_pb.DiskInfoR\x05value:\x028\x01\"\x13\n" +
-	"\x11VolumeListRequest\"\x83\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.master_pb.DiskInfoR\x05value:\x028\x01\"<\n" +
+	"\x11VolumeListRequest\x12'\n" +
+	"\x0fwithout_volumes\x18\x01 \x01(\bR\x0ewithoutVolumes\"\x83\x01\n" +
 	"\x12VolumeListResponse\x12<\n" +
 	"\rtopology_info\x18\x01 \x01(\v2\x17.master_pb.TopologyInfoR\ftopologyInfo\x12/\n" +
 	"\x14volume_size_limit_mb\x18\x02 \x01(\x04R\x11volumeSizeLimitMb\"4\n" +
