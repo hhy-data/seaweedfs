@@ -266,7 +266,7 @@ func (dn *DataNode) ToInfo() (info DataNodeInfo) {
 	return
 }
 
-func (dn *DataNode) ToDataNodeInfo() *master_pb.DataNodeInfo {
+func (dn *DataNode) ToDataNodeInfo(withoutVolumes bool) *master_pb.DataNodeInfo {
 	m := &master_pb.DataNodeInfo{
 		Id:        string(dn.Id()),
 		DiskInfos: make(map[string]*master_pb.DiskInfo),
@@ -274,7 +274,7 @@ func (dn *DataNode) ToDataNodeInfo() *master_pb.DataNodeInfo {
 	}
 	for _, c := range dn.Children() {
 		disk := c.(*Disk)
-		m.DiskInfos[string(disk.Id())] = disk.ToDiskInfo()
+		m.DiskInfos[string(disk.Id())] = disk.ToDiskInfo(withoutVolumes)
 	}
 	return m
 }

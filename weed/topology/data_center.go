@@ -1,9 +1,10 @@
 package topology
 
 import (
+	"strings"
+
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"golang.org/x/exp/slices"
-	"strings"
 )
 
 type DataCenter struct {
@@ -54,14 +55,14 @@ func (dc *DataCenter) ToInfo() (info DataCenterInfo) {
 	return
 }
 
-func (dc *DataCenter) ToDataCenterInfo() *master_pb.DataCenterInfo {
+func (dc *DataCenter) ToDataCenterInfo(withoutVolumes bool) *master_pb.DataCenterInfo {
 	m := &master_pb.DataCenterInfo{
 		Id:        string(dc.Id()),
 		DiskInfos: dc.diskUsages.ToDiskInfo(),
 	}
 	for _, c := range dc.Children() {
 		rack := c.(*Rack)
-		m.RackInfos = append(m.RackInfos, rack.ToRackInfo())
+		m.RackInfos = append(m.RackInfos, rack.ToRackInfo(withoutVolumes))
 	}
 	return m
 }

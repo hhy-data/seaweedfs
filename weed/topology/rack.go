@@ -1,12 +1,13 @@
 package topology
 
 import (
+	"strings"
+	"time"
+
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/storage/types"
 	"github.com/seaweedfs/seaweedfs/weed/util"
 	"golang.org/x/exp/slices"
-	"strings"
-	"time"
 )
 
 type Rack struct {
@@ -78,14 +79,14 @@ func (r *Rack) ToInfo() (info RackInfo) {
 	return
 }
 
-func (r *Rack) ToRackInfo() *master_pb.RackInfo {
+func (r *Rack) ToRackInfo(withoutVolumes bool) *master_pb.RackInfo {
 	m := &master_pb.RackInfo{
 		Id:        string(r.Id()),
 		DiskInfos: r.diskUsages.ToDiskInfo(),
 	}
 	for _, c := range r.Children() {
 		dn := c.(*DataNode)
-		m.DataNodeInfos = append(m.DataNodeInfos, dn.ToDataNodeInfo())
+		m.DataNodeInfos = append(m.DataNodeInfos, dn.ToDataNodeInfo(withoutVolumes))
 	}
 	return m
 }
