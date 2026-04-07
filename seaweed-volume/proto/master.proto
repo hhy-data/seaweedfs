@@ -415,6 +415,7 @@ message VolumeListRequest {
   uint32 volume_id = 2;
   // The one collection the empty string cannot name. A named collection wins.
   bool default_collection_only = 3;
+  bool without_volumes = 4;
 }
 message VolumeListResponse {
   TopologyInfo topology_info = 1;
