@@ -26,6 +26,12 @@ func NoVolumes() VolumeFilter {
 // than the wrong thing.
 func NewVolumeFilter(req *master_pb.VolumeListRequest) VolumeFilter {
 	var filter VolumeFilter
+
+	if req.WithoutVolumes {
+		filter.nothing = true
+		return filter
+	}
+
 	switch {
 	case req.Collection != "":
 		collection := req.Collection
@@ -38,6 +44,7 @@ func NewVolumeFilter(req *master_pb.VolumeListRequest) VolumeFilter {
 		volumeId := needle.VolumeId(req.VolumeId)
 		filter.VolumeId = &volumeId
 	}
+
 	return filter
 }
 
