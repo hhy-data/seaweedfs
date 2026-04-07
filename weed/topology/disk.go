@@ -255,7 +255,7 @@ func (d *Disk) FreeSpace() int64 {
 	return t.FreeSpace()
 }
 
-func (d *Disk) ToDiskInfo() *master_pb.DiskInfo {
+func (d *Disk) ToDiskInfo(withoutVolumes bool) *master_pb.DiskInfo {
 	diskUsage := d.diskUsages.getOrCreateDisk(types.ToDiskType(string(d.Id())))
 
 	// Get disk ID from first volume or EC shard
@@ -277,6 +277,11 @@ func (d *Disk) ToDiskInfo() *master_pb.DiskInfo {
 		RemoteVolumeCount: diskUsage.remoteVolumeCount,
 		DiskId:            diskId,
 	}
+
+	if withoutVolumes {
+		return m
+	}
+
 	for _, v := range volumes {
 		m.VolumeInfos = append(m.VolumeInfos, v.ToVolumeInformationMessage())
 	}
