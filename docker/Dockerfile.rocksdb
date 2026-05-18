@@ -25,7 +25,8 @@ RUN wget https://github.com/facebook/rocksdb/archive/refs/tags/${ROCKSDB_VERSION
 ENV CGO_CFLAGS "-I/usr/local/include"
 ENV CGO_LDFLAGS "-L/usr/local/lib -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy -llz4 -lzstd"
 ENV CGO_ENABLED=1
-ENV GOPROXY=https://goproxy.io,direct
+#ENV GOPROXY=https://goproxy.io,direct
+ARG GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct
 
 WORKDIR /seaweedfs
 
