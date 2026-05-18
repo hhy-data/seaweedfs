@@ -1,16 +1,17 @@
 #FROM vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/golang:1.23.2-bullseye as builder
 FROM golang:1.25.10-trixie as builder
 
-RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
-
-RUN echo "deb http://mirrors.aliyun.com/debian/ bullseye main non-free contrib" > /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/debian/ bullseye-updates main non-free contrib" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/debian-security bullseye-security main" >> /etc/apt/sources.list
-
-RUN apt-get update && \
+RUN sed -i -E "s/[a-zA-Z0-9]+.debian.org/mirrors.aliyun.com/g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     apt-get install -y build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev libzstd-dev
 
-#ENV ROCKSDB_VERSION v9.3.1
+#RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
+
+#RUN echo "deb http://mirrors.aliyun.com/debian/ bullseye main non-free contrib" > /etc/apt/sources.list && \
+#    echo "deb http://mirrors.aliyun.com/debian/ bullseye-updates main non-free contrib" >> /etc/apt/sources.list && \
+#    echo "deb http://mirrors.aliyun.com/debian-security bullseye-security main" >> /etc/apt/sources.list
+
+
 ARG ROCKSDB_VERSION=v10.5.1
 
 
