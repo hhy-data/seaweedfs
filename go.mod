@@ -519,3 +519,6 @@ require (
 )
 
 // replace github.com/seaweedfs/raft => /Users/chrislu/go/src/github.com/seaweedfs/raft
+
+// tyler-smith/go-bip39 repo has been removed from GitHub, use base/go-bip39 fork
+replace github.com/tyler-smith/go-bip39 => github.com/base/go-bip39 v1.1.0
