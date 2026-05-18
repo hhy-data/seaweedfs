@@ -3,7 +3,7 @@ FROM golang:1.25.10-trixie as builder
 
 RUN sed -i -E "s/[a-zA-Z0-9]+.debian.org/mirrors.aliyun.com/g" /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
-    apt-get install -y build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev libzstd-dev
+    && apt-get install -y build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev libzstd-dev
 
 #RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
 
