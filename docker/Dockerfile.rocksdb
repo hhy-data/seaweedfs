@@ -37,6 +37,7 @@ RUN --mount=type=cache,target=/go/pkg,id=go-mod-cache,sharing=locked \
     go mod download
 
 COPY weed weed
+COPY telemetry telemetry
 
 RUN cd weed && \
     go install -buildvcs=false -tags "rocksdb" -ldflags "-extldflags -static"
