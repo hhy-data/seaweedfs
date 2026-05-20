@@ -12,7 +12,7 @@ RUN sed -i -E "s/[a-zA-Z0-9]+.debian.org/mirrors.aliyun.com/g" /etc/apt/sources.
 #    echo "deb http://mirrors.aliyun.com/debian-security bullseye-security main" >> /etc/apt/sources.list
 
 
-ARG ROCKSDB_VERSION=v10.5.1
+ARG ROCKSDB_VERSION=v10.10.1
 
 
 RUN wget https://github.com/facebook/rocksdb/archive/refs/tags/${ROCKSDB_VERSION}.tar.gz -O /tmp/rocksdb.tar.gz && \
