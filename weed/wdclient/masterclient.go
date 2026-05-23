@@ -88,8 +88,9 @@ func (mc *MasterClient) LookupFileIdWithFallback(fileId string) (fullUrls []stri
 		return nil, fmt.Errorf("volume %s not found for fileId %s", volumeId, fileId)
 	}
 
-	// Build HTTP URLs from locations, preferring same data center
+	// Build HTTP URLs from locations, preferring same data center and local volumes
 	var sameDcUrls, otherDcUrls []string
+	localUrls := make(map[string]bool)
 	for _, loc := range locations {
 		httpUrl := "http://" + loc.Url + "/" + fileId
 		if mc.DataCenter != "" && mc.DataCenter == loc.DataCenter {
@@ -97,7 +98,13 @@ func (mc *MasterClient) LookupFileIdWithFallback(fileId string) (fullUrls []stri
 		} else {
 			otherDcUrls = append(otherDcUrls, httpUrl)
 		}
+		if !loc.DataInRemote {
+			localUrls[httpUrl] = true
+		}
 	}
+
+	sameDcUrls = util.ReorderToFront(localUrls, sameDcUrls)
+	otherDcUrls = util.ReorderToFront(localUrls, otherDcUrls)
 
 	// Prefer same data center
 	fullUrls = append(sameDcUrls, otherDcUrls...)
