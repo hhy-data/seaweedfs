@@ -190,10 +190,11 @@ func (mc *MasterClient) LookupVolumeIdsWithFallback(ctx context.Context, volumeI
 				var locations []Location
 				for _, masterLoc := range vidLoc.Locations {
 					loc := Location{
-						Url:        masterLoc.Url,
-						PublicUrl:  masterLoc.PublicUrl,
-						GrpcPort:   int(masterLoc.GrpcPort),
-						DataCenter: masterLoc.DataCenter,
+						Url:          masterLoc.Url,
+						PublicUrl:    masterLoc.PublicUrl,
+						GrpcPort:     int(masterLoc.GrpcPort),
+						DataCenter:   masterLoc.DataCenter,
+						DataInRemote: masterLoc.DataInRemote,
 					}
 					mc.vidMap.addLocation(uint32(vid), loc)
 					locations = append(locations, loc)
