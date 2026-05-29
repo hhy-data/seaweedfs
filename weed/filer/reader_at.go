@@ -140,8 +140,6 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 		})
 		if len(localUrls) > 0 {
 			sameDcTargetUrls = util.ReorderToFront(localUrls, sameDcTargetUrls)
-		}
-		if len(localUrls) > 0 {
 			otherTargetUrls = util.ReorderToFront(localUrls, otherTargetUrls)
 		}
 		// Prefer same data center
