@@ -525,6 +525,7 @@ func (v *Volume) ToVolumeInformationMessage(into *master_pb.VolumeInformationMes
 	volumeInfo.DiskType = string(v.location.DiskType)
 	volumeInfo.DiskId = v.diskId
 	volumeInfo.RemoteStorageName, volumeInfo.RemoteStorageKey = v.RemoteStorageNameKey()
+	volumeInfo.DataInRemote = v.HasRemoteFile()
 
 	return maxFileKey, volumeInfo
 }
