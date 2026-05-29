@@ -26,6 +26,7 @@ type VolumeInfo struct {
 	ModifiedAtSecond  int64
 	RemoteStorageName string
 	RemoteStorageKey  string
+	DataInRemote      bool
 }
 
 func NewVolumeInfo(m *master_pb.VolumeInformationMessage) (vi VolumeInfo, err error) {
@@ -44,6 +45,7 @@ func NewVolumeInfo(m *master_pb.VolumeInformationMessage) (vi VolumeInfo, err er
 		RemoteStorageKey:  m.RemoteStorageKey,
 		DiskType:          m.DiskType,
 		DiskId:            m.DiskId,
+		DataInRemote:      m.DataInRemote,
 	}
 	rp, e := super_block.NewReplicaPlacementFromByte(byte(m.ReplicaPlacement))
 	if e != nil {
@@ -97,6 +99,7 @@ func (vi VolumeInfo) ToVolumeInformationMessage() *master_pb.VolumeInformationMe
 		RemoteStorageKey:  vi.RemoteStorageKey,
 		DiskType:          vi.DiskType,
 		DiskId:            vi.DiskId,
+		DataInRemote:      vi.DataInRemote,
 	}
 }
 
