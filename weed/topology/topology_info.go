@@ -100,7 +100,11 @@ func (t *Topology) ToVolumeLocations() (volumeLocations []*master_pb.VolumeLocat
 					GrpcPort:   uint32(dn.GrpcPort),
 				}
 				for _, v := range dn.GetVolumes() {
-					volumeLocation.NewVids = append(volumeLocation.NewVids, uint32(v.Id))
+					if v.DataInRemote {
+						volumeLocation.RemoteVids = append(volumeLocation.RemoteVids, uint32(v.Id))
+					} else {
+						volumeLocation.NewVids = append(volumeLocation.NewVids, uint32(v.Id))
+					}
 				}
 				// A single EC volume's shards can live on multiple disks of
 				// one DataNode, so GetEcShards returns per-(vid,disk) entries.
