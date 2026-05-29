@@ -57,7 +57,7 @@ func LookupFileId(masterFn GetMasterFn, grpcDialOption grpc.DialOption, fileId s
 		return "", jwt, errors.New("File Not Found")
 	}
 
-	localUrls := make([]string, 0)
+	localUrls := make([]string, 0, len(lookup.Locations))
 	for _, loc := range lookup.Locations {
 		if !loc.DataInRemote {
 			localUrls = append(localUrls, loc.Url)
