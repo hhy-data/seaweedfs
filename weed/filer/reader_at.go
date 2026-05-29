@@ -138,10 +138,10 @@ func LookupFn(filerClient filer_pb.FilerClient) wdclient.LookupFileIdFunctionTyp
 		rand.Shuffle(len(otherTargetUrls), func(i, j int) {
 			otherTargetUrls[i], otherTargetUrls[j] = otherTargetUrls[j], otherTargetUrls[i]
 		})
-		if len(localUrls) > 0 && len(localUrls) != len(sameDcTargetUrls) {
+		if len(localUrls) > 0 {
 			sameDcTargetUrls = util.ReorderToFront(localUrls, sameDcTargetUrls)
 		}
-		if len(localUrls) > 0 && len(localUrls) != len(otherTargetUrls) {
+		if len(localUrls) > 0 {
 			otherTargetUrls = util.ReorderToFront(localUrls, otherTargetUrls)
 		}
 		// Prefer same data center

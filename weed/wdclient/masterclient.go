@@ -369,9 +369,10 @@ func (mc *MasterClient) updateVidMap(resp *master_pb.KeepConnectedResponse) {
 		mc.addLocation(newVid, loc)
 	}
 	for _, remoteVid := range resp.VolumeLocation.RemoteVids {
-		loc.DataInRemote = true
-		glog.V(2).Infof("%s.%s: %s masterClient adds remote volume %d", mc.FilerGroup, mc.clientType, loc.Url, remoteVid)
-		mc.addLocation(remoteVid, loc)
+		remoteLoc := loc
+		remoteLoc.DataInRemote = true
+		glog.V(2).Infof("%s.%s: %s masterClient adds remote volume %d", mc.FilerGroup, mc.clientType, remoteLoc.Url, remoteVid)
+		mc.addLocation(remoteVid, remoteLoc)
 	}
 	for _, deletedVid := range resp.VolumeLocation.DeletedVids {
 		glog.V(2).Infof("%s.%s: %s masterClient removes volume %d", mc.FilerGroup, mc.clientType, loc.Url, deletedVid)

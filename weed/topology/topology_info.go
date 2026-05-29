@@ -100,7 +100,6 @@ func (t *Topology) ToVolumeLocations() (volumeLocations []*master_pb.VolumeLocat
 					GrpcPort:   uint32(dn.GrpcPort),
 				}
 				for _, v := range dn.GetVolumes() {
-					volumeLocation.NewVids = append(volumeLocation.NewVids, uint32(v.Id))
 					if v.DataInRemote {
 						volumeLocation.RemoteVids = append(volumeLocation.RemoteVids, uint32(v.Id))
 					} else {
