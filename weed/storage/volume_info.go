@@ -36,8 +36,9 @@ type VolumeInfo struct {
 	FileCount   uint32
 	DeleteCount uint32
 
-	Version  needle.Version
-	ReadOnly bool
+	Version      needle.Version
+	DataInRemote bool
+	ReadOnly     bool
 }
 
 // countAsUint32 narrows a reported count without letting it wrap. Nothing
@@ -65,6 +66,7 @@ func NewVolumeInfo(m *master_pb.VolumeInformationMessage) (vi VolumeInfo, err er
 		RemoteStorageName: internVolumeString(m.RemoteStorageName),
 		DiskType:          internVolumeString(m.DiskType),
 		DiskId:            m.DiskId,
+		DataInRemote:      m.DataInRemote,
 	}
 	rp, e := super_block.NewReplicaPlacementFromByte(byte(m.ReplicaPlacement))
 	if e != nil {
@@ -162,6 +164,7 @@ func (vi VolumeInfo) ToVolumeInformationMessage() *master_pb.VolumeInformationMe
 		RemoteStorageName: vi.RemoteStorageName,
 		DiskType:          vi.DiskType,
 		DiskId:            vi.DiskId,
+		DataInRemote:      vi.DataInRemote,
 	}
 }
 
