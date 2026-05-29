@@ -427,6 +427,7 @@ func (v *Volume) ToVolumeInformationMessage() (types.NeedleId, *master_pb.Volume
 		ModifiedAtSecond: modTime.Unix(),
 		DiskType:         string(v.location.DiskType),
 		DiskId:           v.diskId,
+		DataInRemote:     v.hasRemoteFile,
 	}
 
 	volumeInfo.RemoteStorageName, volumeInfo.RemoteStorageKey = v.RemoteStorageNameKey()

@@ -125,6 +125,7 @@ message VolumeInformationMessage {
   string remote_storage_key = 14;
   string disk_type = 15;
   uint32 disk_id = 16;
+  bool data_in_remote = 17;
 }
 
 message VolumeShortInformationMessage {
@@ -193,6 +194,7 @@ message VolumeLocation {
   uint32 grpc_port = 7;
   repeated uint32 new_ec_vids = 8;
   repeated uint32 deleted_ec_vids = 9;
+  repeated uint32 remote_vids = 10;
 }
 
 message ClusterNodeUpdate {
@@ -238,6 +240,7 @@ message Location {
   string public_url = 2;
   uint32 grpc_port = 3;
   string data_center = 4;
+  bool data_in_remote = 5;
 }
 
 message AssignRequest {
