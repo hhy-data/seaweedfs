@@ -55,7 +55,7 @@ func (s *Store) MountEcShards(collection string, vid needle.VolumeId, shardId er
 
 			var shardBits erasure_coding.ShardBits
 
-			s.NewEcShardsChan <- master_pb.VolumeEcShardInformationMessage{
+			s.NewEcShardsChan <- &master_pb.VolumeEcShardInformationMessage{
 				Id:          uint32(vid),
 				Collection:  collection,
 				EcIndexBits: uint32(shardBits.AddShardId(shardId)),
@@ -81,7 +81,7 @@ func (s *Store) UnmountEcShards(vid needle.VolumeId, shardId erasure_coding.Shar
 	}
 
 	var shardBits erasure_coding.ShardBits
-	message := master_pb.VolumeEcShardInformationMessage{
+	message := &master_pb.VolumeEcShardInformationMessage{
 		Id:          uint32(vid),
 		Collection:  ecShard.Collection,
 		EcIndexBits: uint32(shardBits.AddShardId(shardId)),

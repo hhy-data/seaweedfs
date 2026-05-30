@@ -1,14 +1,5 @@
 package util
 
-// ToPointers converts a slice of values to a slice of pointers.
-func ToPointers[T any](in []T) []*T {
-	out := make([]*T, len(in))
-	for i := range in {
-		out[i] = &in[i]
-	}
-	return out
-}
-
 func ReorderToFront[T comparable](frontMap map[T]bool, inputSlice []T) []T {
 	var prioritized []T
 	var remaining []T

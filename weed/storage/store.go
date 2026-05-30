@@ -68,10 +68,10 @@ type Store struct {
 	rack                string // optional information, overwriting master setting if exists
 	connected           bool
 	NeedleMapKind       NeedleMapKind
-	NewVolumesChan      chan master_pb.VolumeShortInformationMessage
-	DeletedVolumesChan  chan master_pb.VolumeShortInformationMessage
-	NewEcShardsChan     chan master_pb.VolumeEcShardInformationMessage
-	DeletedEcShardsChan chan master_pb.VolumeEcShardInformationMessage
+	NewVolumesChan      chan *master_pb.VolumeShortInformationMessage
+	DeletedVolumesChan  chan *master_pb.VolumeShortInformationMessage
+	NewEcShardsChan     chan *master_pb.VolumeEcShardInformationMessage
+	DeletedEcShardsChan chan *master_pb.VolumeEcShardInformationMessage
 	isStopping          bool
 }
 
@@ -99,11 +99,11 @@ func NewStore(grpcDialOption grpc.DialOption, ip string, port int, grpcPort int,
 	}
 	wg.Wait()
 
-	s.NewVolumesChan = make(chan master_pb.VolumeShortInformationMessage, 1024)
-	s.DeletedVolumesChan = make(chan master_pb.VolumeShortInformationMessage, 128)
+	s.NewVolumesChan = make(chan *master_pb.VolumeShortInformationMessage, 1024)
+	s.DeletedVolumesChan = make(chan *master_pb.VolumeShortInformationMessage, 128)
 
-	s.NewEcShardsChan = make(chan master_pb.VolumeEcShardInformationMessage, 1024)
-	s.DeletedEcShardsChan = make(chan master_pb.VolumeEcShardInformationMessage, 128)
+	s.NewEcShardsChan = make(chan *master_pb.VolumeEcShardInformationMessage, 1024)
+	s.DeletedEcShardsChan = make(chan *master_pb.VolumeEcShardInformationMessage, 128)
 
 	return
 }
@@ -171,7 +171,7 @@ func (s *Store) addVolume(vid needle.VolumeId, collection string, needleMapKind 
 		if volume, err := NewVolume(location.Directory, location.IdxDirectory, collection, vid, needleMapKind, replicaPlacement, ttl, preallocate, memoryMapMaxSizeMb, ldbTimeout); err == nil {
 			location.SetVolume(vid, volume)
 			glog.V(0).Infof("add volume %d", vid)
-			s.NewVolumesChan <- master_pb.VolumeShortInformationMessage{
+			s.NewVolumesChan <- &master_pb.VolumeShortInformationMessage{
 				Id:               uint32(vid),
 				Collection:       collection,
 				ReplicaPlacement: uint32(replicaPlacement.Byte()),
@@ -502,7 +502,7 @@ func (s *Store) MountVolume(i needle.VolumeId) error {
 		if found := location.LoadVolume(i, s.NeedleMapKind); found == true {
 			glog.V(0).Infof("mount volume %d", i)
 			v := s.findVolume(i)
-			s.NewVolumesChan <- master_pb.VolumeShortInformationMessage{
+			s.NewVolumesChan <- &master_pb.VolumeShortInformationMessage{
 				Id:               uint32(v.Id),
 				Collection:       v.Collection,
 				ReplicaPlacement: uint32(v.ReplicaPlacement.Byte()),
@@ -522,7 +522,7 @@ func (s *Store) UnmountVolume(i needle.VolumeId) error {
 	if v == nil {
 		return nil
 	}
-	message := master_pb.VolumeShortInformationMessage{
+	message := &master_pb.VolumeShortInformationMessage{
 		Id:               uint32(v.Id),
 		Collection:       v.Collection,
 		ReplicaPlacement: uint32(v.ReplicaPlacement.Byte()),
@@ -551,7 +551,7 @@ func (s *Store) DeleteVolume(i needle.VolumeId, onlyEmpty bool) error {
 	if v == nil {
 		return fmt.Errorf("delete volume %d not found on disk", i)
 	}
-	message := master_pb.VolumeShortInformationMessage{
+	message := &master_pb.VolumeShortInformationMessage{
 		Id:               uint32(v.Id),
 		Collection:       v.Collection,
 		ReplicaPlacement: uint32(v.ReplicaPlacement.Byte()),

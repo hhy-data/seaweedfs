@@ -12,6 +12,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"github.com/seaweedfs/seaweedfs/weed/security"
 	"github.com/seaweedfs/seaweedfs/weed/storage/backend"
+	"github.com/seaweedfs/seaweedfs/weed/storage/erasure_coding"
 
 	"golang.org/x/net/context"
 
@@ -176,7 +177,7 @@ func (vs *VolumeServer) doHeartbeat(masterAddress pb.ServerAddress, grpcDialOpti
 	for {
 		select {
 		case first := <-vs.store.NewVolumesChan:
-			volumes := util.ToPointers(util.DrainChannel(vs.store.NewVolumesChan, first))
+			volumes := util.DrainChannel(vs.store.NewVolumesChan, first)
 			deltaBeat := &master_pb.Heartbeat{
 				Ip:         ip,
 				Port:       port,
@@ -184,13 +185,15 @@ func (vs *VolumeServer) doHeartbeat(masterAddress pb.ServerAddress, grpcDialOpti
 				Rack:       rack,
 				NewVolumes: volumes,
 			}
-			glog.V(0).Infof("volume server %s:%d adds %d volumes", vs.store.Ip, vs.store.Port, len(volumes))
+			for _, v := range volumes {
+				glog.V(0).Infof("volume server %s:%d adds volume %d", vs.store.Ip, vs.store.Port, v.Id)
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
 		case first := <-vs.store.NewEcShardsChan:
-			shards := util.ToPointers(util.DrainChannel(vs.store.NewEcShardsChan, first))
+			shards := util.DrainChannel(vs.store.NewEcShardsChan, first)
 			deltaBeat := &master_pb.Heartbeat{
 				Ip:           ip,
 				Port:         port,
@@ -198,13 +201,16 @@ func (vs *VolumeServer) doHeartbeat(masterAddress pb.ServerAddress, grpcDialOpti
 				Rack:         rack,
 				NewEcShards: shards,
 			}
-			glog.V(0).Infof("volume server %s:%d adds %d ec shards", vs.store.Ip, vs.store.Port, len(shards))
+			for _, s := range shards {
+				glog.V(0).Infof("volume server %s:%d adds ec shard %d:%d", vs.store.Ip, vs.store.Port, s.Id,
+					erasure_coding.ShardBits(s.EcIndexBits).ShardIds())
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
 		case first := <-vs.store.DeletedVolumesChan:
-			volumes := util.ToPointers(util.DrainChannel(vs.store.DeletedVolumesChan, first))
+			volumes := util.DrainChannel(vs.store.DeletedVolumesChan, first)
 			deltaBeat := &master_pb.Heartbeat{
 				Ip:             ip,
 				Port:           port,
@@ -212,13 +218,15 @@ func (vs *VolumeServer) doHeartbeat(masterAddress pb.ServerAddress, grpcDialOpti
 				Rack:           rack,
 				DeletedVolumes: volumes,
 			}
-			glog.V(0).Infof("volume server %s:%d deletes %d volumes", vs.store.Ip, vs.store.Port, len(volumes))
+			for _, v := range volumes {
+				glog.V(0).Infof("volume server %s:%d deletes volume %d", vs.store.Ip, vs.store.Port, v.Id)
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
 		case first := <-vs.store.DeletedEcShardsChan:
-			shards := util.ToPointers(util.DrainChannel(vs.store.DeletedEcShardsChan, first))
+			shards := util.DrainChannel(vs.store.DeletedEcShardsChan, first)
 			deltaBeat := &master_pb.Heartbeat{
 				Ip:               ip,
 				Port:             port,
@@ -226,7 +234,10 @@ func (vs *VolumeServer) doHeartbeat(masterAddress pb.ServerAddress, grpcDialOpti
 				Rack:             rack,
 				DeletedEcShards: shards,
 			}
-			glog.V(0).Infof("volume server %s:%d deletes %d ec shards", vs.store.Ip, vs.store.Port, len(shards))
+			for _, s := range shards {
+				glog.V(0).Infof("volume server %s:%d deletes ec shard %d:%d", vs.store.Ip, vs.store.Port, s.Id,
+					erasure_coding.ShardBits(s.EcIndexBits).ShardIds())
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
