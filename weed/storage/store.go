@@ -99,11 +99,11 @@ func NewStore(grpcDialOption grpc.DialOption, ip string, port int, grpcPort int,
 	}
 	wg.Wait()
 
-	s.NewVolumesChan = make(chan master_pb.VolumeShortInformationMessage, 3)
-	s.DeletedVolumesChan = make(chan master_pb.VolumeShortInformationMessage, 3)
+	s.NewVolumesChan = make(chan master_pb.VolumeShortInformationMessage, 1024)
+	s.DeletedVolumesChan = make(chan master_pb.VolumeShortInformationMessage, 128)
 
-	s.NewEcShardsChan = make(chan master_pb.VolumeEcShardInformationMessage, 3)
-	s.DeletedEcShardsChan = make(chan master_pb.VolumeEcShardInformationMessage, 3)
+	s.NewEcShardsChan = make(chan master_pb.VolumeEcShardInformationMessage, 1024)
+	s.DeletedEcShardsChan = make(chan master_pb.VolumeEcShardInformationMessage, 128)
 
 	return
 }

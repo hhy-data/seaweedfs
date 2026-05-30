@@ -12,7 +12,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"github.com/seaweedfs/seaweedfs/weed/security"
 	"github.com/seaweedfs/seaweedfs/weed/storage/backend"
-	"github.com/seaweedfs/seaweedfs/weed/storage/erasure_coding"
 
 	"golang.org/x/net/context"
 
@@ -176,64 +175,58 @@ func (vs *VolumeServer) doHeartbeat(masterAddress pb.ServerAddress, grpcDialOpti
 	port := uint32(vs.store.Port)
 	for {
 		select {
-		case volumeMessage := <-vs.store.NewVolumesChan:
+		case first := <-vs.store.NewVolumesChan:
+			volumes := util.ToPointers(util.DrainChannel(vs.store.NewVolumesChan, first))
 			deltaBeat := &master_pb.Heartbeat{
 				Ip:         ip,
 				Port:       port,
 				DataCenter: dataCenter,
 				Rack:       rack,
-				NewVolumes: []*master_pb.VolumeShortInformationMessage{
-					&volumeMessage,
-				},
+				NewVolumes: volumes,
 			}
-			glog.V(0).Infof("volume server %s:%d adds volume %d", vs.store.Ip, vs.store.Port, volumeMessage.Id)
+			glog.V(0).Infof("volume server %s:%d adds %d volumes", vs.store.Ip, vs.store.Port, len(volumes))
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
-		case ecShardMessage := <-vs.store.NewEcShardsChan:
+		case first := <-vs.store.NewEcShardsChan:
+			shards := util.ToPointers(util.DrainChannel(vs.store.NewEcShardsChan, first))
 			deltaBeat := &master_pb.Heartbeat{
-				Ip:         ip,
-				Port:       port,
-				DataCenter: dataCenter,
-				Rack:       rack,
-				NewEcShards: []*master_pb.VolumeEcShardInformationMessage{
-					&ecShardMessage,
-				},
+				Ip:           ip,
+				Port:         port,
+				DataCenter:   dataCenter,
+				Rack:         rack,
+				NewEcShards: shards,
 			}
-			glog.V(0).Infof("volume server %s:%d adds ec shard %d:%d", vs.store.Ip, vs.store.Port, ecShardMessage.Id,
-				erasure_coding.ShardBits(ecShardMessage.EcIndexBits).ShardIds())
+			glog.V(0).Infof("volume server %s:%d adds %d ec shards", vs.store.Ip, vs.store.Port, len(shards))
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
-		case volumeMessage := <-vs.store.DeletedVolumesChan:
+		case first := <-vs.store.DeletedVolumesChan:
+			volumes := util.ToPointers(util.DrainChannel(vs.store.DeletedVolumesChan, first))
 			deltaBeat := &master_pb.Heartbeat{
-				Ip:         ip,
-				Port:       port,
-				DataCenter: dataCenter,
-				Rack:       rack,
-				DeletedVolumes: []*master_pb.VolumeShortInformationMessage{
-					&volumeMessage,
-				},
+				Ip:             ip,
+				Port:           port,
+				DataCenter:     dataCenter,
+				Rack:           rack,
+				DeletedVolumes: volumes,
 			}
-			glog.V(0).Infof("volume server %s:%d deletes volume %d", vs.store.Ip, vs.store.Port, volumeMessage.Id)
+			glog.V(0).Infof("volume server %s:%d deletes %d volumes", vs.store.Ip, vs.store.Port, len(volumes))
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
-		case ecShardMessage := <-vs.store.DeletedEcShardsChan:
+		case first := <-vs.store.DeletedEcShardsChan:
+			shards := util.ToPointers(util.DrainChannel(vs.store.DeletedEcShardsChan, first))
 			deltaBeat := &master_pb.Heartbeat{
-				Ip:         ip,
-				Port:       port,
-				DataCenter: dataCenter,
-				Rack:       rack,
-				DeletedEcShards: []*master_pb.VolumeEcShardInformationMessage{
-					&ecShardMessage,
-				},
+				Ip:               ip,
+				Port:             port,
+				DataCenter:       dataCenter,
+				Rack:             rack,
+				DeletedEcShards: shards,
 			}
-			glog.V(0).Infof("volume server %s:%d deletes ec shard %d:%d", vs.store.Ip, vs.store.Port, ecShardMessage.Id,
-				erasure_coding.ShardBits(ecShardMessage.EcIndexBits).ShardIds())
+			glog.V(0).Infof("volume server %s:%d deletes %d ec shards", vs.store.Ip, vs.store.Port, len(shards))
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
