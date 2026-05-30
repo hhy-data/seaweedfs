@@ -176,64 +176,68 @@ func (vs *VolumeServer) doHeartbeat(masterAddress pb.ServerAddress, grpcDialOpti
 	port := uint32(vs.store.Port)
 	for {
 		select {
-		case volumeMessage := <-vs.store.NewVolumesChan:
+		case first := <-vs.store.NewVolumesChan:
+			volumes := util.DrainChannel(vs.store.NewVolumesChan, first)
 			deltaBeat := &master_pb.Heartbeat{
 				Ip:         ip,
 				Port:       port,
 				DataCenter: dataCenter,
 				Rack:       rack,
-				NewVolumes: []*master_pb.VolumeShortInformationMessage{
-					&volumeMessage,
-				},
+				NewVolumes: volumes,
 			}
-			glog.V(0).Infof("volume server %s:%d adds volume %d", vs.store.Ip, vs.store.Port, volumeMessage.Id)
+			for _, v := range volumes {
+				glog.V(0).Infof("volume server %s:%d adds volume %d", vs.store.Ip, vs.store.Port, v.Id)
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
-		case ecShardMessage := <-vs.store.NewEcShardsChan:
+		case first := <-vs.store.NewEcShardsChan:
+			shards := util.DrainChannel(vs.store.NewEcShardsChan, first)
 			deltaBeat := &master_pb.Heartbeat{
-				Ip:         ip,
-				Port:       port,
-				DataCenter: dataCenter,
-				Rack:       rack,
-				NewEcShards: []*master_pb.VolumeEcShardInformationMessage{
-					&ecShardMessage,
-				},
+				Ip:           ip,
+				Port:         port,
+				DataCenter:   dataCenter,
+				Rack:         rack,
+				NewEcShards: shards,
 			}
-			glog.V(0).Infof("volume server %s:%d adds ec shard %d:%d", vs.store.Ip, vs.store.Port, ecShardMessage.Id,
-				erasure_coding.ShardBits(ecShardMessage.EcIndexBits).ShardIds())
+			for _, s := range shards {
+				glog.V(0).Infof("volume server %s:%d adds ec shard %d:%d", vs.store.Ip, vs.store.Port, s.Id,
+					erasure_coding.ShardBits(s.EcIndexBits).ShardIds())
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
-		case volumeMessage := <-vs.store.DeletedVolumesChan:
+		case first := <-vs.store.DeletedVolumesChan:
+			volumes := util.DrainChannel(vs.store.DeletedVolumesChan, first)
 			deltaBeat := &master_pb.Heartbeat{
-				Ip:         ip,
-				Port:       port,
-				DataCenter: dataCenter,
-				Rack:       rack,
-				DeletedVolumes: []*master_pb.VolumeShortInformationMessage{
-					&volumeMessage,
-				},
+				Ip:             ip,
+				Port:           port,
+				DataCenter:     dataCenter,
+				Rack:           rack,
+				DeletedVolumes: volumes,
 			}
-			glog.V(0).Infof("volume server %s:%d deletes volume %d", vs.store.Ip, vs.store.Port, volumeMessage.Id)
+			for _, v := range volumes {
+				glog.V(0).Infof("volume server %s:%d deletes volume %d", vs.store.Ip, vs.store.Port, v.Id)
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
 			}
-		case ecShardMessage := <-vs.store.DeletedEcShardsChan:
+		case first := <-vs.store.DeletedEcShardsChan:
+			shards := util.DrainChannel(vs.store.DeletedEcShardsChan, first)
 			deltaBeat := &master_pb.Heartbeat{
-				Ip:         ip,
-				Port:       port,
-				DataCenter: dataCenter,
-				Rack:       rack,
-				DeletedEcShards: []*master_pb.VolumeEcShardInformationMessage{
-					&ecShardMessage,
-				},
+				Ip:               ip,
+				Port:             port,
+				DataCenter:       dataCenter,
+				Rack:             rack,
+				DeletedEcShards: shards,
 			}
-			glog.V(0).Infof("volume server %s:%d deletes ec shard %d:%d", vs.store.Ip, vs.store.Port, ecShardMessage.Id,
-				erasure_coding.ShardBits(ecShardMessage.EcIndexBits).ShardIds())
+			for _, s := range shards {
+				glog.V(0).Infof("volume server %s:%d deletes ec shard %d:%d", vs.store.Ip, vs.store.Port, s.Id,
+					erasure_coding.ShardBits(s.EcIndexBits).ShardIds())
+			}
 			if err = stream.Send(deltaBeat); err != nil {
 				glog.V(0).Infof("Volume Server Failed to update to master %s: %v", masterAddress, err)
 				return "", err
