@@ -173,18 +173,22 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 		return length, nil
 	}
 
-	if f.readDisabled {
-		return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
-	}
-
 	path := getPathFromKey(f.key)
 
 	// First try UDM cache to avoid unnecessary downloads.
 	udmCacheFile := buildInternalCacheFilePath(path)
-	if _, err = os.Stat(udmCacheFile); err == nil {
-		return f.readAtInternalCache(udmCacheFile, p, off)
-	} else if !os.IsNotExist(err) {
-		glog.Warningf("failed to stat file in internal cache %s, will try trans recall cache, err: %v", udmCacheFile, err)
+	cacheN, cacheErr := f.readAtInternalCache(udmCacheFile, p, off)
+	if cacheErr != nil {
+		if !os.IsNotExist(cacheErr) {
+			glog.Warningf("failed to read file in internal cache %s, err: %v", udmCacheFile, cacheErr)
+			return cacheN, cacheErr
+		}
+	} else {
+		return cacheN, nil
+	}
+
+	if f.readDisabled {
+		return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
 	}
 
 	cacheFile, subPathInVolumeCache := buildTransRecallCacheFilePath(path)
