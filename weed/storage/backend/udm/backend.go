@@ -177,14 +177,14 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 
 	// First try UDM cache to avoid unnecessary downloads.
 	udmCacheFile := buildInternalCacheFilePath(path)
-	n, err = f.readAtInternalCache(udmCacheFile, p, off)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			glog.Warningf("failed to read file in internal cache %s, err: %v", udmCacheFile, err)
-			return n, err
+	cacheN, cacheErr := f.readAtInternalCache(udmCacheFile, p, off)
+	if cacheErr != nil {
+		if !os.IsNotExist(cacheErr) {
+			glog.Warningf("failed to read file in internal cache %s, err: %v", udmCacheFile, cacheErr)
+			return cacheN, cacheErr
 		}
 	} else {
-		return n, nil
+		return cacheN, nil
 	}
 
 	if f.readDisabled {
