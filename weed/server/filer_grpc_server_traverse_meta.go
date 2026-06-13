@@ -3,6 +3,7 @@ package weed_server
 import (
 	"context"
 	"fmt"
+
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
@@ -56,6 +57,62 @@ func (fs *FilerServer) TraverseBfsMetadata(req *filer_pb.TraverseBfsMetadataRequ
 	}
 
 	return nil
+}
+
+func (fs *FilerServer) TraverseDfsMetadata(req *filer_pb.TraverseDfsMetadataRequest, stream filer_pb.SeaweedFiler_TraverseDfsMetadataServer) error {
+
+	glog.V(0).Infof("TraverseDfsMetadata %v", req)
+
+	excludedTrie := ptrie.New[bool]()
+	for _, excluded := range req.ExcludedPrefixes {
+		excludedTrie.Put([]byte(excluded), true)
+	}
+
+	isExcluded := func(fullPath util.FullPath) bool {
+		return excludedTrie.MatchPrefix([]byte(fullPath), func(key []byte, value bool) bool {
+			return true
+		})
+	}
+
+	ctx := stream.Context()
+	dirEntry, err := fs.filer.FindEntry(ctx, util.FullPath(req.Directory))
+	if err != nil {
+		return fmt.Errorf("find dir %s: %v", req.Directory, err)
+	}
+
+	err = fs.traverseDfsMetadataEntry(ctx, dirEntry, isExcluded, func(item *filer.Entry) error {
+		parent, _ := item.FullPath.DirAndName()
+		if sendErr := stream.Send(&filer_pb.TraverseDfsMetadataResponse{
+			Directory: parent,
+			Entry:     item.ToProtoEntry(),
+		}); sendErr != nil {
+			return fmt.Errorf("send traverse dfs metadata response: %v", sendErr)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (fs *FilerServer) traverseDfsMetadataEntry(ctx context.Context, item *filer.Entry, isExcluded func(fullPath util.FullPath) bool, fn func(entry *filer.Entry) error) error {
+	if isExcluded(item.FullPath) {
+		return nil
+	}
+
+	if err := fn(item); err != nil {
+		return err
+	}
+
+	if !item.IsDirectory() {
+		return nil
+	}
+
+	return fs.iterateDirectory(ctx, item.FullPath, func(entry *filer.Entry) error {
+		return fs.traverseDfsMetadataEntry(ctx, entry, isExcluded, fn)
+	})
 }
 
 func (fs *FilerServer) iterateDirectory(ctx context.Context, dirPath util.FullPath, fn func(entry *filer.Entry) error) (err error) {

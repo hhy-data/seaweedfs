@@ -35,6 +35,7 @@ const (
 	SeaweedFiler_Ping_FullMethodName                            = "/filer_pb.SeaweedFiler/Ping"
 	SeaweedFiler_GetFilerConfiguration_FullMethodName           = "/filer_pb.SeaweedFiler/GetFilerConfiguration"
 	SeaweedFiler_TraverseBfsMetadata_FullMethodName             = "/filer_pb.SeaweedFiler/TraverseBfsMetadata"
+	SeaweedFiler_TraverseDfsMetadata_FullMethodName             = "/filer_pb.SeaweedFiler/TraverseDfsMetadata"
 	SeaweedFiler_SubscribeMetadata_FullMethodName               = "/filer_pb.SeaweedFiler/SubscribeMetadata"
 	SeaweedFiler_SubscribeLocalMetadata_FullMethodName          = "/filer_pb.SeaweedFiler/SubscribeLocalMetadata"
 	SeaweedFiler_KvGet_FullMethodName                           = "/filer_pb.SeaweedFiler/KvGet"
@@ -66,6 +67,7 @@ type SeaweedFilerClient interface {
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 	GetFilerConfiguration(ctx context.Context, in *GetFilerConfigurationRequest, opts ...grpc.CallOption) (*GetFilerConfigurationResponse, error)
 	TraverseBfsMetadata(ctx context.Context, in *TraverseBfsMetadataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraverseBfsMetadataResponse], error)
+	TraverseDfsMetadata(ctx context.Context, in *TraverseDfsMetadataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraverseDfsMetadataResponse], error)
 	SubscribeMetadata(ctx context.Context, in *SubscribeMetadataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeMetadataResponse], error)
 	SubscribeLocalMetadata(ctx context.Context, in *SubscribeMetadataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeMetadataResponse], error)
 	KvGet(ctx context.Context, in *KvGetRequest, opts ...grpc.CallOption) (*KvGetResponse, error)
@@ -273,9 +275,28 @@ func (c *seaweedFilerClient) TraverseBfsMetadata(ctx context.Context, in *Traver
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SeaweedFiler_TraverseBfsMetadataClient = grpc.ServerStreamingClient[TraverseBfsMetadataResponse]
 
+func (c *seaweedFilerClient) TraverseDfsMetadata(ctx context.Context, in *TraverseDfsMetadataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraverseDfsMetadataResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &SeaweedFiler_ServiceDesc.Streams[3], SeaweedFiler_TraverseDfsMetadata_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[TraverseDfsMetadataRequest, TraverseDfsMetadataResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SeaweedFiler_TraverseDfsMetadataClient = grpc.ServerStreamingClient[TraverseDfsMetadataResponse]
+
 func (c *seaweedFilerClient) SubscribeMetadata(ctx context.Context, in *SubscribeMetadataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeMetadataResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &SeaweedFiler_ServiceDesc.Streams[3], SeaweedFiler_SubscribeMetadata_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &SeaweedFiler_ServiceDesc.Streams[4], SeaweedFiler_SubscribeMetadata_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +315,7 @@ type SeaweedFiler_SubscribeMetadataClient = grpc.ServerStreamingClient[Subscribe
 
 func (c *seaweedFilerClient) SubscribeLocalMetadata(ctx context.Context, in *SubscribeMetadataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeMetadataResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &SeaweedFiler_ServiceDesc.Streams[4], SeaweedFiler_SubscribeLocalMetadata_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &SeaweedFiler_ServiceDesc.Streams[5], SeaweedFiler_SubscribeLocalMetadata_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -401,6 +422,7 @@ type SeaweedFilerServer interface {
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	GetFilerConfiguration(context.Context, *GetFilerConfigurationRequest) (*GetFilerConfigurationResponse, error)
 	TraverseBfsMetadata(*TraverseBfsMetadataRequest, grpc.ServerStreamingServer[TraverseBfsMetadataResponse]) error
+	TraverseDfsMetadata(*TraverseDfsMetadataRequest, grpc.ServerStreamingServer[TraverseDfsMetadataResponse]) error
 	SubscribeMetadata(*SubscribeMetadataRequest, grpc.ServerStreamingServer[SubscribeMetadataResponse]) error
 	SubscribeLocalMetadata(*SubscribeMetadataRequest, grpc.ServerStreamingServer[SubscribeMetadataResponse]) error
 	KvGet(context.Context, *KvGetRequest) (*KvGetResponse, error)
@@ -468,6 +490,9 @@ func (UnimplementedSeaweedFilerServer) GetFilerConfiguration(context.Context, *G
 }
 func (UnimplementedSeaweedFilerServer) TraverseBfsMetadata(*TraverseBfsMetadataRequest, grpc.ServerStreamingServer[TraverseBfsMetadataResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method TraverseBfsMetadata not implemented")
+}
+func (UnimplementedSeaweedFilerServer) TraverseDfsMetadata(*TraverseDfsMetadataRequest, grpc.ServerStreamingServer[TraverseDfsMetadataResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method TraverseDfsMetadata not implemented")
 }
 func (UnimplementedSeaweedFilerServer) SubscribeMetadata(*SubscribeMetadataRequest, grpc.ServerStreamingServer[SubscribeMetadataResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method SubscribeMetadata not implemented")
@@ -784,6 +809,17 @@ func _SeaweedFiler_TraverseBfsMetadata_Handler(srv interface{}, stream grpc.Serv
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SeaweedFiler_TraverseBfsMetadataServer = grpc.ServerStreamingServer[TraverseBfsMetadataResponse]
 
+func _SeaweedFiler_TraverseDfsMetadata_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(TraverseDfsMetadataRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SeaweedFilerServer).TraverseDfsMetadata(m, &grpc.GenericServerStream[TraverseDfsMetadataRequest, TraverseDfsMetadataResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SeaweedFiler_TraverseDfsMetadataServer = grpc.ServerStreamingServer[TraverseDfsMetadataResponse]
+
 func _SeaweedFiler_SubscribeMetadata_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SubscribeMetadataRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1034,6 +1070,11 @@ var SeaweedFiler_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "TraverseBfsMetadata",
 			Handler:       _SeaweedFiler_TraverseBfsMetadata_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "TraverseDfsMetadata",
+			Handler:       _SeaweedFiler_TraverseDfsMetadata_Handler,
 			ServerStreams: true,
 		},
 		{

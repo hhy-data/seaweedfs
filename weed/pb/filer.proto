@@ -57,6 +57,9 @@ service SeaweedFiler {
     rpc TraverseBfsMetadata (TraverseBfsMetadataRequest) returns (stream TraverseBfsMetadataResponse) {
     }
 
+    rpc TraverseDfsMetadata (TraverseDfsMetadataRequest) returns (stream TraverseDfsMetadataResponse) {
+    }
+
     rpc SubscribeMetadata (SubscribeMetadataRequest) returns (stream SubscribeMetadataResponse) {
     }
 
@@ -373,6 +376,15 @@ message TraverseBfsMetadataRequest {
     repeated string excluded_prefixes = 2;
 }
 message TraverseBfsMetadataResponse {
+    string directory = 1;
+    Entry entry = 2;
+}
+
+message TraverseDfsMetadataRequest {
+    string directory = 1;
+    repeated string excluded_prefixes = 2;
+}
+message TraverseDfsMetadataResponse {
     string directory = 1;
     Entry entry = 2;
 }
