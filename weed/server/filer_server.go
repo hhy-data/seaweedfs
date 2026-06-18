@@ -54,28 +54,29 @@ import (
 )
 
 type FilerOption struct {
-	Masters               *pb.ServerDiscovery
-	FilerGroup            string
-	Collection            string
-	DefaultReplication    string
-	DisableDirListing     bool
-	MaxMB                 int
-	DirListingLimit       int
-	DataCenter            string
-	Rack                  string
-	DataNode              string
-	DefaultLevelDbDir     string
-	DisableHttp           bool
-	Host                  pb.ServerAddress
-	recursiveDelete       bool
-	Cipher                bool
-	SaveToFilerLimit      int64
-	ConcurrentUploadLimit int64
-	ShowUIDirectoryDelete bool
-	DownloadMaxBytesPs    int64
-	DiskType              string
-	AllowedOrigins        []string
-	ExposeDirectoryData   bool
+	Masters                    *pb.ServerDiscovery
+	FilerGroup                 string
+	Collection                 string
+	DefaultReplication         string
+	DisableDirListing          bool
+	MaxMB                      int
+	DirListingLimit            int
+	DataCenter                 string
+	Rack                       string
+	DataNode                   string
+	DefaultLevelDbDir          string
+	DisableHttp                bool
+	Host                       pb.ServerAddress
+	recursiveDelete            bool
+	Cipher                     bool
+	SaveToFilerLimit           int64
+	ConcurrentUploadLimit      int64
+	ConcurrentChunkUploadLimit int64
+	ShowUIDirectoryDelete      bool
+	DownloadMaxBytesPs         int64
+	DiskType                   string
+	AllowedOrigins             []string
+	ExposeDirectoryData        bool
 }
 
 type FilerServer struct {
@@ -138,9 +139,10 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	returnDirMetadata := v.GetBool("filer.expose_directory_metadata.enabled")
 	option.ExposeDirectoryData = returnDirMetadata
 
-	// Set concurrent chunk upload limit from config
-	v.SetDefault("filer.concurrentChunkUploadLimit", 32)
-	ConcurrentChunkUploadsLimit = int64(v.GetInt("filer.concurrentChunkUploadLimit"))
+	// Set concurrent chunk upload limit from option
+	if option.ConcurrentChunkUploadLimit > 0 {
+		ConcurrentChunkUploadsLimit = option.ConcurrentChunkUploadLimit
+	}
 
 	fs = &FilerServer{
 		option:                option,
