@@ -59,18 +59,16 @@ func acquireUploadSlot() func() {
 func putBufPool(buf *bytes.Buffer) {
 	size := cap(buf.Bytes())
 
-	// Tiered return policy: smaller buffers have higher return rate
-	// to improve memory reuse, larger buffers are discarded to reduce memory pressure
 	var shouldReturn bool
 	switch {
-	case size <= 4*1024*1024: // <= 4MB: 80%
+	case size <= 4*1024*1024:
 		shouldReturn = rand.Intn(10) < 8
-	case size <= 8*1024*1024: // <= 8MB: 50%
+	case size <= 8*1024*1024:
 		shouldReturn = rand.Intn(10) < 6
-	case size <= 16*1024*1024: // <= 16MB: 20%
-		shouldReturn = rand.Intn(10) < 5
-	default: // > 16MB: 10%
-		shouldReturn = rand.Intn(10) < 4
+	case size <= 16*1024*1024:
+		shouldReturn = rand.Intn(10) < 6
+	default:
+		shouldReturn = rand.Intn(10) < 6
 	}
 
 	if shouldReturn {
