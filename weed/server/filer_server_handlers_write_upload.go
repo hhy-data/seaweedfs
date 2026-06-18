@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"sync"
@@ -53,34 +54,29 @@ func acquireUploadSlot() func() {
 }
 
 // putBufPool returns a buffer to the pool based on its size.
-// Smaller buffers are returned to the pool for reuse, while larger buffers
-// are discarded to prevent memory bloat under high concurrency.
+// Smaller buffers have higher return rate for reuse, larger buffers
+// are discarded more aggressively to prevent memory bloat.
 func putBufPool(buf *bytes.Buffer) {
 	size := cap(buf.Bytes())
 
 	// Tiered return policy: smaller buffers have higher return rate
 	// to improve memory reuse, larger buffers are discarded to reduce memory pressure
+	var shouldReturn bool
 	switch {
-	case size <= 4*1024*1024: // <= 4MB: 80% return
-		if atomic.AddInt64(&bufPoolReturnCounter, 1)%5 != 0 {
-			bufPool.Put(buf)
-		}
-	case size <= 8*1024*1024: // <= 8MB: 50% return
-		if atomic.AddInt64(&bufPoolReturnCounter, 1)%2 == 0 {
-			bufPool.Put(buf)
-		}
-	case size <= 16*1024*1024: // <= 16MB: 20% return
-		if atomic.AddInt64(&bufPoolReturnCounter, 1)%5 == 0 {
-			bufPool.Put(buf)
-		}
-	default: // > 16MB: 10% return
-		if atomic.AddInt64(&bufPoolReturnCounter, 1)%10 == 0 {
-			bufPool.Put(buf)
-		}
+	case size <= 4*1024*1024: // <= 4MB: 80%
+		shouldReturn = rand.Intn(10) < 8
+	case size <= 8*1024*1024: // <= 8MB: 50%
+		shouldReturn = rand.Intn(10) < 6
+	case size <= 16*1024*1024: // <= 16MB: 20%
+		shouldReturn = rand.Intn(10) < 5
+	default: // > 16MB: 10%
+		shouldReturn = rand.Intn(10) < 4
+	}
+
+	if shouldReturn {
+		bufPool.Put(buf)
 	}
 }
-
-var bufPoolReturnCounter int64
 
 func (fs *FilerServer) uploadRequestToChunks(w http.ResponseWriter, r *http.Request, reader io.Reader, chunkSize int32, fileName, contentType string, contentLength int64, so *operation.StorageOption) (fileChunks []*filer_pb.FileChunk, md5Hash hash.Hash, chunkOffset int64, uploadErr error, smallContent []byte) {
 	query := r.URL.Query()
