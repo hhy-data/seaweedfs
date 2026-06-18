@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -25,6 +26,40 @@ var bufPool = sync.Pool{
 	New: func() interface{} {
 		return new(bytes.Buffer)
 	},
+}
+
+// ConcurrentChunkUploadsLimit limits the total number of concurrent chunk uploads across all requests.
+// This prevents memory bloat under high concurrency (e.g., 30+ concurrent S3 uploads with maxMB=32).
+// Can be set via filer command line or config file.
+var ConcurrentChunkUploadsLimit int64
+
+var concurrentChunkUploadsActive int64
+
+// acquireUploadSlot waits for a slot to become available for chunk upload.
+// Returns a function to call when the upload completes to release the slot.
+func acquireUploadSlot() func() {
+	for {
+		current := atomic.LoadInt64(&concurrentChunkUploadsActive)
+		limit := atomic.LoadInt64(&ConcurrentChunkUploadsLimit)
+		if current < limit {
+			if atomic.CompareAndSwapInt64(&concurrentChunkUploadsActive, current, current+1) {
+				return func() {
+					atomic.AddInt64(&concurrentChunkUploadsActive, -1)
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// putBufPool returns a buffer to the pool, but only if it's not too large.
+// Large buffers are discarded to prevent memory accumulation under high concurrency.
+func putBufPool(buf *bytes.Buffer) {
+	if cap(buf.Bytes()) > int(operation.LargeBufferSizeThreshold) {
+		// Don't return large buffers to the pool
+		return
+	}
+	bufPool.Put(buf)
 }
 
 func (fs *FilerServer) uploadRequestToChunks(w http.ResponseWriter, r *http.Request, reader io.Reader, chunkSize int32, fileName, contentType string, contentLength int64, so *operation.StorageOption) (fileChunks []*filer_pb.FileChunk, md5Hash hash.Hash, chunkOffset int64, uploadErr error, smallContent []byte) {
@@ -74,7 +109,7 @@ func (fs *FilerServer) uploadReaderToChunks(reader io.Reader, startOffset int64,
 
 		// data, err := io.ReadAll(limitedReader)
 		if err != nil || dataSize == 0 {
-			bufPool.Put(bytesBuffer)
+			putBufPool(bytesBuffer)
 			<-bytesBufferLimitChan
 			if err != nil {
 				uploadErrLock.Lock()
@@ -90,7 +125,7 @@ func (fs *FilerServer) uploadReaderToChunks(reader io.Reader, startOffset int64,
 				chunkOffset += dataSize
 				smallContent = make([]byte, dataSize)
 				bytesBuffer.Read(smallContent)
-				bufPool.Put(bytesBuffer)
+				putBufPool(bytesBuffer)
 				<-bytesBufferLimitChan
 				stats.FilerHandlerCounter.WithLabelValues(stats.ContentSaveToFiler).Inc()
 				break
@@ -101,8 +136,11 @@ func (fs *FilerServer) uploadReaderToChunks(reader io.Reader, startOffset int64,
 
 		wg.Add(1)
 		go func(offset int64) {
+			// Acquire slot for this chunk upload (blocks if limit reached)
+			releaseSlot := acquireUploadSlot()
 			defer func() {
-				bufPool.Put(bytesBuffer)
+				releaseSlot()
+				putBufPool(bytesBuffer)
 				<-bytesBufferLimitChan
 				wg.Done()
 			}()

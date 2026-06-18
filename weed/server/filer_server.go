@@ -138,6 +138,10 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	returnDirMetadata := v.GetBool("filer.expose_directory_metadata.enabled")
 	option.ExposeDirectoryData = returnDirMetadata
 
+	// Set concurrent chunk upload limit from config
+	v.SetDefault("filer.concurrentChunkUploadLimit", 32)
+	ConcurrentChunkUploadsLimit = int64(v.GetInt("filer.concurrentChunkUploadLimit"))
+
 	fs = &FilerServer{
 		option:                option,
 		grpcDialOption:        security.LoadClientTLS(util.GetViper(), "grpc.filer"),
