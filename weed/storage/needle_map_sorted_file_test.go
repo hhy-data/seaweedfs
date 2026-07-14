@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/seaweedfs/seaweedfs/weed/storage/idx"
-	"github.com/seaweedfs/seaweedfs/weed/storage/needle"
 	. "github.com/seaweedfs/seaweedfs/weed/storage/types"
 )
 
@@ -47,7 +46,7 @@ func TestSortedFileNeedleMap_DeleteAppendsTombstone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen idx: %v", err)
 	}
-	m, err := NewSortedFileNeedleMap(baseName, idxFile, needle.GetCurrentVersion())
+	m, err := NewSortedFileNeedleMap(baseName, idxFile)
 	if err != nil {
 		t.Fatalf("NewSortedFileNeedleMap: %v", err)
 	}
