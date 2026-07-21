@@ -2,6 +2,7 @@ package s3api
 
 import (
 	"cmp"
+	"context"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/base64"
@@ -10,7 +11,9 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"net/http"
 	"net/url"
 	"path"
 	"slices"
@@ -18,20 +21,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
-	"github.com/seaweedfs/seaweedfs/weed/stats"
-	"github.com/seaweedfs/seaweedfs/weed/util"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/google/uuid"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
-
-	"net/http"
-
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
+	"github.com/seaweedfs/seaweedfs/weed/operation"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
+	"github.com/seaweedfs/seaweedfs/weed/security"
+	"github.com/seaweedfs/seaweedfs/weed/stats"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
 const (
@@ -611,6 +612,80 @@ func (s3a *S3ApiServer) completeMultipartUpload(r *http.Request, input *s3.Compl
 		completionState, output, prepCode = s3a.prepareMultipartCompletionState(r, input, uploadDirectory, entryName, dirName, completedPartNumbers, completedPartMap, maxPartNo)
 		if prepCode != s3err.ErrNone || output != nil {
 			return prepCode
+		}
+
+		// Group large numbers of chunks into manifest chunks to improve performance
+		// MaybeManifestize only groups chunks when there are >10,000 chunks (ManifestBatch)
+		// For SSE-encrypted chunks, it returns them unchanged to preserve per-chunk metadata
+		// Create save function for MaybeManifestize to save manifest chunks
+		saveAsChunk := func(reader io.Reader, name string, offset int64, tsNs int64, expectedDataSize uint64) (*filer_pb.FileChunk, error) {
+			var fileId string
+			var uploadResult *operation.UploadResult
+
+			err := util.Retry("saveAsChunk", func() error {
+				var assignResult *filer_pb.AssignVolumeResponse
+				assignErr := s3a.WithFilerClient(false, func(client filer_pb.SeaweedFilerClient) error {
+					resp, err := client.AssignVolume(context.Background(), &filer_pb.AssignVolumeRequest{
+						Count:            1,
+						Replication:      "",
+						Collection:       "", // Use default collection for manifest chunks
+						DiskType:         "",
+						DataCenter:       s3a.option.DataCenter,
+						Path:             dirName + "/" + entryName, // Use object path for manifest
+						ExpectedDataSize: expectedDataSize,
+						TtlSec:           0, // Manifests inherit TTL from object
+					})
+					if err != nil {
+						return fmt.Errorf("assign volume: %w", err)
+					}
+					if resp.Error != "" {
+						return fmt.Errorf("assign volume: %v", resp.Error)
+					}
+					assignResult = resp
+					return nil
+				})
+				if assignErr != nil {
+					return assignErr
+				}
+
+				fileId = assignResult.FileId
+
+				// Upload the manifest chunk to the volume server
+				uploadOption := &operation.UploadOption{
+					UploadUrl:         assignResult.Location.Url,
+					Filename:          name,
+					Cipher:            s3a.cipher,
+					IsInputCompressed: false,
+					MimeType:          "",
+					PairMap:           nil,
+					Jwt:               security.EncodedJwt(assignResult.Auth),
+				}
+
+				uploader, uploaderErr := operation.NewUploader()
+				if uploaderErr != nil {
+					return uploaderErr
+				}
+
+				var uploadErr error
+				uploadCtx := context.WithoutCancel(context.Background())
+				uploadResult, uploadErr, _ = uploader.Upload(uploadCtx, reader, uploadOption)
+				if uploadErr != nil {
+					return uploadErr
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return uploadResult.ToPbFileChunk(fileId, offset, tsNs), nil
+		}
+
+		var manifestErr error
+		completionState.finalParts, manifestErr = filer.MaybeManifestize(saveAsChunk, completionState.finalParts)
+		if manifestErr != nil {
+			glog.Errorf("completeMultipartUpload: MaybeManifestize failed: %v", manifestErr)
+			return s3err.ErrInternalError
 		}
 
 		etagQuote := "\"" + completionState.multipartETag + "\""

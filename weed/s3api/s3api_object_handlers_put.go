@@ -28,6 +28,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/security"
 	weed_server "github.com/seaweedfs/seaweedfs/weed/server"
 	stats_collect "github.com/seaweedfs/seaweedfs/weed/stats"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 	"github.com/seaweedfs/seaweedfs/weed/util/constants"
 )
 
@@ -520,6 +521,71 @@ func (s3a *S3ApiServer) putToFiler(r *http.Request, filePath string, dataReader 
 		return nil, result, nil
 	}
 
+	// Create save function for MaybeManifestize to save manifest chunks
+	// This is called when there are >10,000 chunks that need to be grouped into manifests
+	saveAsChunk := func(reader io.Reader, name string, offset int64, tsNs int64, expectedDataSize uint64) (*filer_pb.FileChunk, error) {
+		var fileId string
+		var uploadResult *operation.UploadResult
+
+		err := util.Retry("saveAsChunk", func() error {
+			var assignResult *filer_pb.AssignVolumeResponse
+			assignErr := s3a.WithFilerClient(false, func(client filer_pb.SeaweedFilerClient) error {
+				resp, err := client.AssignVolume(context.Background(), &filer_pb.AssignVolumeRequest{
+					Count:            1,
+					Replication:      "",
+					Collection:       collection,
+					DiskType:         "",
+					DataCenter:       s3a.option.DataCenter,
+					Path:             filePath,
+					ExpectedDataSize: expectedDataSize,
+					TtlSec:           lifecycleTTLSec,
+				})
+				if err != nil {
+					return fmt.Errorf("assign volume: %w", err)
+				}
+				if resp.Error != "" {
+					return fmt.Errorf("assign volume: %v", resp.Error)
+				}
+				assignResult = resp
+				return nil
+			})
+			if assignErr != nil {
+				return assignErr
+			}
+
+			fileId = assignResult.FileId
+
+			// Upload the manifest chunk to the volume server
+			uploadOption := &operation.UploadOption{
+				UploadUrl:         assignResult.Location.Url,
+				Filename:          name,
+				Cipher:            s3a.cipher,
+				IsInputCompressed: false,
+				MimeType:          "",
+				PairMap:           nil,
+				Jwt:               security.EncodedJwt(assignResult.Auth),
+			}
+
+			uploader, uploaderErr := operation.NewUploader()
+			if uploaderErr != nil {
+				return uploaderErr
+			}
+
+			var uploadErr error
+			uploadCtx := context.WithoutCancel(context.Background())
+			uploadResult, uploadErr, _ = uploader.Upload(uploadCtx, reader, uploadOption)
+			if uploadErr != nil {
+				return uploadErr
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return uploadResult.ToPbFileChunk(fileId, offset, tsNs), nil
+	}
+
 	// Upload with auto-chunking
 	// Use context.Background() to ensure chunk uploads complete even if HTTP request is cancelled
 	// This prevents partial uploads and data corruption
@@ -645,6 +711,16 @@ func (s3a *S3ApiServer) putToFiler(r *http.Request, filePath string, dataReader 
 				glog.Errorf("Failed to serialize SSE-S3 metadata for chunk at offset %d: %v", chunk.Offset, serErr)
 			}
 		}
+	}
+
+	// Group large numbers of chunks into manifest chunks to improve performance
+	// MaybeManifestize only groups chunks when there are >10,000 chunks (ManifestBatch)
+	// For SSE-encrypted chunks, it returns them unchanged to preserve per-chunk metadata
+	chunkResult.FileChunks, err = filer.MaybeManifestize(saveAsChunk, chunkResult.FileChunks)
+	if err != nil {
+		glog.Errorf("putToFiler: MaybeManifestize failed: %v", err)
+		s3a.deleteOrphanedChunks(chunkResult.FileChunks)
+		return "", s3err.ErrInternalError, SSEResponseMetadata{}
 	}
 
 	// Step 4: Create metadata entry
