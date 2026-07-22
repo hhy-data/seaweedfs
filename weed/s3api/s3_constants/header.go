@@ -86,6 +86,7 @@ const (
 	AmzChecksumSHA256       = "X-Amz-Checksum-Sha256"
 	AmzTrailer              = "X-Amz-Trailer"
 	AmzSdkChecksumAlgorithm = "X-Amz-Sdk-Checksum-Algorithm"
+	AmzChecksumType         = "X-Amz-Checksum-Type"
 
 	// S3 conditional headers
 	IfMatch           = "If-Match"

@@ -20,6 +20,7 @@ import (
 
 	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
 	"github.com/seaweedfs/seaweedfs/weed/stats"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -514,9 +515,12 @@ func (s3a *S3ApiServer) prepareMultipartCompletionState(r *http.Request, input *
 		}
 	}
 
-	// Compute composite checksum from per-part checksums if the upload
-	// was initiated with a checksum algorithm (stored in upload dir entry)
+	// Compute the object checksum from per-part checksums if the upload was
+	// initiated with a checksum algorithm (stored in the upload dir entry).
+	// The checksum type (COMPOSITE or FULL_OBJECT) is resolved from the
+	// x-amz-checksum-type header captured at CreateMultipartUpload
 	checksumHeaderName := ""
+	checksumType := ""
 	checksumValue := ""
 	if pentry.Extended != nil {
 		if algoName, ok := pentry.Extended[s3_constants.ExtChecksumAlgorithm]; ok {
@@ -524,10 +528,26 @@ func (s3a *S3ApiServer) prepareMultipartCompletionState(r *http.Request, input *
 		}
 	}
 	if checksumHeaderName != "" {
+		algo := checksumAlgorithmFromHeaderName(checksumHeaderName)
+		requestedType := ""
+		if pentry.Extended != nil {
+			requestedType = string(pentry.Extended[s3_constants.ExtChecksumType])
+		}
+		resolvedType, typeErr := resolveMultipartChecksumType(algo, requestedType)
+		if typeErr != nil {
+			glog.Errorf("completeMultipartUpload: %v", typeErr)
+			return nil, nil, s3err.ErrInvalidRequest
+		}
+		checksumType = resolvedType
+
 		var checksumErr error
-		checksumValue, checksumErr = computeCompositeChecksum(checksumHeaderName, partEntries, completedPartNumbers)
+		if checksumType == s3_constants.ChecksumTypeFullObject {
+			checksumValue, checksumErr = computeFullObjectChecksum(checksumHeaderName, partEntries, completedPartNumbers)
+		} else {
+			checksumValue, checksumErr = computeCompositeChecksum(checksumHeaderName, partEntries, completedPartNumbers)
+		}
 		if checksumErr != nil {
-			glog.Errorf("completeMultipartUpload: composite checksum computation failed: %v", checksumErr)
+			glog.Errorf("completeMultipartUpload: %s checksum computation failed: %v", checksumType, checksumErr)
 			return nil, nil, s3err.ErrInvalidPart
 		}
 	}
@@ -1345,6 +1365,82 @@ func computeCompositeChecksum(checksumHeaderName string, partEntries map[int][]*
 	return fmt.Sprintf("%s-%d", base64.StdEncoding.EncodeToString(compositeRaw), len(completedPartNumbers)), nil
 }
 
+// decodePartChecksum decodes the stored checksum for a part, validating the algorithm matches.
+func decodePartChecksum(partNumber int, entries []*filer_pb.Entry, checksumHeaderName string) ([]byte, *filer_pb.Entry, error) {
+	if len(entries) == 0 {
+		return nil, nil, fmt.Errorf("part %d not found", partNumber)
+	}
+	if len(entries) > 1 {
+		sortEntriesByLatestChunk(entries)
+	}
+	entry := entries[0]
+	if entry.Extended == nil {
+		return nil, nil, fmt.Errorf("part %d missing checksum: upload initiated with %s but part was uploaded without a checksum", partNumber, checksumHeaderName)
+	}
+	// Validate the part's checksum algorithm matches the upload's expected algorithm
+	partAlgo, ok := entry.Extended[s3_constants.ExtChecksumAlgorithm]
+	if !ok || len(partAlgo) == 0 {
+		return nil, nil, fmt.Errorf("part %d missing checksum: upload initiated with %s but part was uploaded without a checksum", partNumber, checksumHeaderName)
+	}
+	if string(partAlgo) != checksumHeaderName {
+		return nil, nil, fmt.Errorf("part %d checksum algorithm mismatch: upload expects %s but part has %s", partNumber, checksumHeaderName, string(partAlgo))
+	}
+	partChecksumB64, ok := entry.Extended[s3_constants.ExtChecksumValue]
+	if !ok || len(partChecksumB64) == 0 {
+		return nil, nil, fmt.Errorf("part %d missing checksum value: upload initiated with %s but part has no checksum value", partNumber, checksumHeaderName)
+	}
+	raw, err := base64.StdEncoding.DecodeString(string(partChecksumB64))
+	if err != nil {
+		return nil, nil, fmt.Errorf("part %d has invalid checksum encoding: %w", partNumber, err)
+	}
+	return raw, entry, nil
+}
+
+// computeFullObjectChecksum computes a FULL_OBJECT checksum from per-part checksums
+// by combining the per-part CRCs into the CRC of the whole object. The result is the
+// base64-encoded whole-object checksum with NO "-N" suffix (a full-object checksum
+// is indistinguishable from a single-part upload's checksum). This is required for
+// CRC64NVME, which AWS only supports as a full-object checksum.
+func computeFullObjectChecksum(checksumHeaderName string, partEntries map[int][]*filer_pb.Entry, completedPartNumbers []int) (string, error) {
+	algo := checksumAlgorithmFromHeaderName(checksumHeaderName)
+	params, ok := crcCombineParams[algo]
+	if !ok {
+		return "", fmt.Errorf("full object checksum not supported for %s", checksumHeaderName)
+	}
+
+	checksumBytes := int(params.width / 8)
+
+	var combined uint64
+	for i, partNumber := range completedPartNumbers {
+		raw, entry, err := decodePartChecksum(partNumber, partEntries[partNumber], checksumHeaderName)
+		if err != nil {
+			return "", err
+		}
+		if len(raw) != checksumBytes {
+			return "", fmt.Errorf("part %d checksum has unexpected length %d for %s", partNumber, len(raw), checksumHeaderName)
+		}
+
+		crc := util.BytesToUint64(raw)
+
+		if i == 0 {
+			combined = crc
+		} else {
+			partLen := filer.FileSize(entry)
+			combined = combineCRC(combined, crc, partLen, params)
+		}
+	}
+
+	// Write the low checksumBytes bytes of the combined CRC big-endian. We can't
+	// use util.Uint64toBytes here because it unconditionally writes 8 bytes, which
+	// would panic for narrower CRCs (e.g. 4-byte CRC32/CRC32C).
+	out := make([]byte, checksumBytes)
+	for i := 0; i < checksumBytes; i++ {
+		out[checksumBytes-1-i] = byte(combined >> (i * 8))
+	}
+
+	return base64.StdEncoding.EncodeToString(out), nil
+}
+
 // checksumAlgorithmFromHeaderName maps a canonical header name back to its algorithm.
 func checksumAlgorithmFromHeaderName(headerName string) ChecksumAlgorithm {
 	for _, entry := range checksumHeaders {
@@ -1399,4 +1495,44 @@ func validateCompletePartETag(partETag string, entry *filer_pb.Entry) (match boo
 	}
 
 	return normalizedPartETag == normalizedEntryETag, false, normalizedPartETag, normalizedEntryETag
+}
+
+type checksumTypeSupport struct {
+	composite  bool
+	fullObject bool
+}
+
+var checksumTypeSupportByAlgo = map[ChecksumAlgorithm]checksumTypeSupport{
+	ChecksumAlgorithmCRC32:     {composite: true, fullObject: true},
+	ChecksumAlgorithmCRC32C:    {composite: true, fullObject: true},
+	ChecksumAlgorithmCRC64NVMe: {fullObject: true},
+	ChecksumAlgorithmSHA1:       {composite: true}, // Technically, fullObject could be supported, but is not yet implemented
+	ChecksumAlgorithmSHA256:     {composite: true}, // Technically, fullObject could be supported, but is not yet implemented
+}
+
+func resolveMultipartChecksumType(algo ChecksumAlgorithm, requested string) (string, error) {
+	support, ok := checksumTypeSupportByAlgo[algo]
+	if !ok {
+		return "", fmt.Errorf("unsupported checksum algorithm %v", algo)
+	}
+
+	switch strings.ToUpper(strings.TrimSpace(requested)) {
+	case "":
+		if support.composite {
+			return s3_constants.ChecksumTypeComposite, nil
+		}
+		return s3_constants.ChecksumTypeFullObject, nil
+	case s3_constants.ChecksumTypeComposite:
+		if !support.composite {
+			return "", fmt.Errorf("checksum algorithm %v does not support %s checksums", algo, s3_constants.ChecksumTypeComposite)
+		}
+		return s3_constants.ChecksumTypeComposite, nil
+	case s3_constants.ChecksumTypeFullObject:
+		if !support.fullObject {
+			return "", fmt.Errorf("checksum algorithm %v does not support %s checksums", algo, s3_constants.ChecksumTypeFullObject)
+		}
+		return s3_constants.ChecksumTypeFullObject, nil
+	default:
+		return "", fmt.Errorf("invalid checksum type %q", requested)
+	}
 }
