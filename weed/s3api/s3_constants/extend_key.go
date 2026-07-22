@@ -36,6 +36,7 @@ const (
 	// S3 checksum storage keys (use x-seaweedfs- prefix to avoid leaking in generic header loop)
 	ExtChecksumAlgorithm = "x-seaweedfs-checksum-algorithm"
 	ExtChecksumValue     = "x-seaweedfs-checksum-value"
+	ExtChecksumType      = "x-seaweedfs-checksum-type"
 
 	// Bucket Policy
 	ExtBucketPolicyKey = "Seaweed-X-Amz-Bucket-Policy"
@@ -50,6 +51,10 @@ const (
 	ExtObjectLockDefaultModeKey  = "Lock-Default-Mode"
 	ExtObjectLockDefaultDaysKey  = "Lock-Default-Days"
 	ExtObjectLockDefaultYearsKey = "Lock-Default-Years"
+
+	// Checksum types
+	ChecksumTypeComposite  = "COMPOSITE"
+	ChecksumTypeFullObject = "FULL_OBJECT"
 )
 
 // Object Lock and Retention Constants
