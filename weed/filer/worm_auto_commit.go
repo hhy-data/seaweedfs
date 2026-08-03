@@ -166,7 +166,7 @@ func (s *wormAutoCommitController) process(ctx context.Context, fullPath util.Fu
 
 func (s *wormAutoCommitController) enforceNow(ctx context.Context, fullPath util.FullPath) (*Entry, bool, error) {
 	rule := s.filer.FilerConf.MatchStorageRule(string(fullPath))
-	if !rule.Worm {
+	if !rule.GetWorm() {
 		return nil, false, nil
 	}
 
