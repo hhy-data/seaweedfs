@@ -290,7 +290,7 @@ func (fc *FilerConf) GetCollectionTtls(collection string) (ttls map[string]strin
 func (fc *FilerConf) GetWORMPaths() []string {
 	var res []string
 	fc.rules.Walk(func(key []byte, value *filer_pb.FilerConf_PathConf) bool {
-		if value.Worm {
+		if value.GetWorm() {
 			res = append(res, value.LocationPrefix)
 		}
 		return true
