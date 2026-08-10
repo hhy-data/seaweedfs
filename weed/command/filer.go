@@ -233,7 +233,7 @@ var cmdFiler = &Command{
 
 func runFiler(cmd *Command, args []string) bool {
 	if *f.debug {
-		go http.ListenAndServe(fmt.Sprintf(":%d", *f.debugPort), nil)
+		grace.StartDebugServer(*f.debugPort)
 	}
 
 	*f.defaultLevelDbDirectory = util.ResolvePath(*f.defaultLevelDbDirectory)
