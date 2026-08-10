@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	netpprof "net/http/pprof"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -15,7 +16,12 @@ import (
 // The server runs in a goroutine and serves pprof endpoints at /debug/pprof/*.
 func StartDebugServer(debugPort int) {
 	go func() {
-		addr := fmt.Sprintf("127.0.0.1:%d", debugPort)
+		http.HandleFunc("/_internal/debug/pprof/heap", func(w http.ResponseWriter, r *http.Request) {
+			runtime.GC()
+			netpprof.Handler("heap").ServeHTTP(w, r)
+		})
+
+		addr := fmt.Sprintf("0.0.0.0:%d", debugPort)
 		glog.V(0).Infof("Starting debug server for pprof at http://%s/debug/pprof/", addr)
 		if err := http.ListenAndServe(addr, nil); err != nil && err != http.ErrServerClosed {
 			glog.Errorf("Failed to start debug server on %s: %v", addr, err)
