@@ -1,0 +1,41 @@
+# Temporary pod for filer metadata recovery.
+# Image stays idle (tail -f); exec into it to run the tool:
+#
+#   kubectl -n vdm exec -it log-recover -- sh
+#   # ls /data/                        # volume server .dat files
+#   # printf '/data/1.dat\n/data/2.dat\n' > /data/list.txt
+#   # dat_recover -datList=/data/list.txt -output=/data/recovered.meta
+#   kubectl -n vdm cp vdm/log-recover:/data/recovered.meta recovered.meta
+#   kubectl -n vdm delete pod log-recover
+#
+# NOTE: if the volume server PVC is ReadWriteOnce, this pod must be scheduled
+# on the same node as the volume server pod (add nodeSelector/affinity below).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-recover
+  namespace: vdm
+  labels:
+    app: log-recover
+spec:
+  restartPolicy: Never
+  containers:
+    - name: log-recover
+      image: vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/log-recover:0.1
+      command: ["tail", "-f", "/dev/null"]
+      workingDir: /data
+      volumeMounts:
+        - name: weed-data
+          mountPath: /data
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          memory: 8Gi   # path-state aggregation for all volumes; tune as needed
+  volumes:
+    - name: weed-data
+      persistentVolumeClaim:
+        claimName: REPLACE_ME   # <-- volume server data PVC name
+      # If the .dat files live in a subPath of the PVC (e.g. data0/), either
+      # set subPath: "data0" here or list files as /data/data0/1.dat in list.txt.
