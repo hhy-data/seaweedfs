@@ -263,7 +263,7 @@ func (ms *MasterServer) SendHeartbeat(stream master_pb.Seaweed_SendHeartbeatServ
 
 			for _, v := range newVolumes {
 				glog.V(1).Infof("master see new volume %d from %s", uint32(v.Id), dn.Url())
-				if v.DataInRemote {
+				if v.IsRemote() {
 					message.RemoteVids = append(message.RemoteVids, uint32(v.Id))
 				} else {
 					message.NewVids = append(message.NewVids, uint32(v.Id))

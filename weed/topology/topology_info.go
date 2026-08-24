@@ -102,7 +102,7 @@ func (t *Topology) ToVolumeLocations() (volumeLocations []*master_pb.VolumeLocat
 				}
 
 				for _, v := range dn.GetVolumes() {
-					if v.DataInRemote {
+					if v.IsRemote() {
 						volumeLocation.RemoteVids = append(volumeLocation.RemoteVids, uint32(v.Id))
 					} else {
 						volumeLocation.NewVids = append(volumeLocation.NewVids, uint32(v.Id))
