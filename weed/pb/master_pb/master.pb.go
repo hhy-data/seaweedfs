@@ -2811,8 +2811,10 @@ type VolumeListRequest struct {
 	Collection string `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
 	VolumeId   uint32 `protobuf:"varint,2,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
 	// The one collection the empty string cannot name. A named collection wins.
-	DefaultCollectionOnly bool `protobuf:"varint,3,opt,name=default_collection_only,json=defaultCollectionOnly,proto3" json:"default_collection_only,omitempty"`
-	WithoutVolumes        bool `protobuf:"varint,4,opt,name=without_volumes,json=withoutVolumes,proto3" json:"without_volumes,omitempty"`
+	DefaultCollectionOnly bool   `protobuf:"varint,3,opt,name=default_collection_only,json=defaultCollectionOnly,proto3" json:"default_collection_only,omitempty"`
+	RemoteStorageName     string `protobuf:"bytes,4,opt,name=remote_storage_name,json=remoteStorageName,proto3" json:"remote_storage_name,omitempty"`
+	LocalVolumeOnly       bool   `protobuf:"varint,5,opt,name=local_volume_only,json=localVolumeOnly,proto3" json:"local_volume_only,omitempty"`
+	WithoutVolumes        bool   `protobuf:"varint,6,opt,name=without_volumes,json=withoutVolumes,proto3" json:"without_volumes,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -2864,6 +2866,20 @@ func (x *VolumeListRequest) GetVolumeId() uint32 {
 func (x *VolumeListRequest) GetDefaultCollectionOnly() bool {
 	if x != nil {
 		return x.DefaultCollectionOnly
+	}
+	return false
+}
+
+func (x *VolumeListRequest) GetRemoteStorageName() string {
+	if x != nil {
+		return x.RemoteStorageName
+	}
+	return ""
+}
+
+func (x *VolumeListRequest) GetLocalVolumeOnly() bool {
+	if x != nil {
+		return x.LocalVolumeOnly
 	}
 	return false
 }
@@ -5252,14 +5268,16 @@ const file_master_proto_rawDesc = "" +
 	"\tdiskInfos\x18\x03 \x03(\v2&.master_pb.TopologyInfo.DiskInfosEntryR\tdiskInfos\x1aQ\n" +
 	"\x0eDiskInfosEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.master_pb.DiskInfoR\x05value:\x028\x01\"\xb1\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.master_pb.DiskInfoR\x05value:\x028\x01\"\x8d\x02\n" +
 	"\x11VolumeListRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
 	"collection\x12\x1b\n" +
 	"\tvolume_id\x18\x02 \x01(\rR\bvolumeId\x126\n" +
-	"\x17default_collection_only\x18\x03 \x01(\bR\x15defaultCollectionOnly\x12'\n" +
-	"\x0fwithout_volumes\x18\x04 \x01(\bR\x0ewithoutVolumes\"\x83\x01\n" +
+	"\x17default_collection_only\x18\x03 \x01(\bR\x15defaultCollectionOnly\x12.\n" +
+	"\x13remote_storage_name\x18\x04 \x01(\tR\x11remoteStorageName\x12*\n" +
+	"\x11local_volume_only\x18\x05 \x01(\bR\x0flocalVolumeOnly\x12'\n" +
+	"\x0fwithout_volumes\x18\x06 \x01(\bR\x0ewithoutVolumes\"\x83\x01\n" +
 	"\x12VolumeListResponse\x12<\n" +
 	"\rtopology_info\x18\x01 \x01(\v2\x17.master_pb.TopologyInfoR\ftopologyInfo\x12/\n" +
 	"\x14volume_size_limit_mb\x18\x02 \x01(\x04R\x11volumeSizeLimitMb\"\xda\x02\n" +

@@ -418,7 +418,9 @@ message VolumeListRequest {
   uint32 volume_id = 2;
   // The one collection the empty string cannot name. A named collection wins.
   bool default_collection_only = 3;
-  bool without_volumes = 4;
+  string remote_storage_name = 4;
+  bool local_volume_only = 5;
+  bool without_volumes = 6;
 }
 message VolumeListResponse {
   TopologyInfo topology_info = 1;
