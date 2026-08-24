@@ -3,6 +3,7 @@ package topology
 import (
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/storage/needle"
+	"github.com/seaweedfs/seaweedfs/weed/util/wildcard"
 )
 
 // VolumeFilter narrows a topology listing to the volumes a caller asked about,
@@ -75,8 +76,16 @@ func (f VolumeFilter) matches(vi volumeLike) bool {
 	if f.Collection != nil && *f.Collection != vi.GetCollection() {
 		return false
 	}
-	if f.remoteStorageName != nil && *f.remoteStorageName != vi.GetRemoteStorageName() {
-		return false
+	if f.remoteStorageName != nil {
+		pattern, name := *f.remoteStorageName, vi.GetRemoteStorageName()
+		// the empty name is the local volumes, which only asking for the empty
+		// name selects; even * leaves them out.
+		if name == "" && pattern != "" {
+			return false
+		}
+		if !wildcard.MatchesWildcard(pattern, name) {
+			return false
+		}
 	}
 	if f.VolumeId != nil && *f.VolumeId != vi.GetVolumeId() {
 		return false

@@ -2811,12 +2811,13 @@ type VolumeListRequest struct {
 	Collection string `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
 	VolumeId   uint32 `protobuf:"varint,2,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
 	// The one collection the empty string cannot name. A named collection wins.
-	DefaultCollectionOnly bool   `protobuf:"varint,3,opt,name=default_collection_only,json=defaultCollectionOnly,proto3" json:"default_collection_only,omitempty"`
-	RemoteStorageName     string `protobuf:"bytes,4,opt,name=remote_storage_name,json=remoteStorageName,proto3" json:"remote_storage_name,omitempty"`
-	LocalVolumeOnly       bool   `protobuf:"varint,5,opt,name=local_volume_only,json=localVolumeOnly,proto3" json:"local_volume_only,omitempty"`
-	WithoutVolumes        bool   `protobuf:"varint,6,opt,name=without_volumes,json=withoutVolumes,proto3" json:"without_volumes,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	DefaultCollectionOnly bool `protobuf:"varint,3,opt,name=default_collection_only,json=defaultCollectionOnly,proto3" json:"default_collection_only,omitempty"`
+	// Empty and zero take everything. Wildcards are supported.
+	RemoteStorageName string `protobuf:"bytes,4,opt,name=remote_storage_name,json=remoteStorageName,proto3" json:"remote_storage_name,omitempty"`
+	LocalVolumeOnly   bool   `protobuf:"varint,5,opt,name=local_volume_only,json=localVolumeOnly,proto3" json:"local_volume_only,omitempty"`
+	WithoutVolumes    bool   `protobuf:"varint,6,opt,name=without_volumes,json=withoutVolumes,proto3" json:"without_volumes,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *VolumeListRequest) Reset() {
