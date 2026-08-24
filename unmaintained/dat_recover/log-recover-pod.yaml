@@ -3,13 +3,20 @@
 #
 #   kubectl -n vdm exec -it log-recover -- sh
 #   # ls /data/                        # volume server .dat files
-#   # printf '/data/1.dat\n/data/2.dat\n' > /data/list.txt
-#   # dat_recover -datList=/data/list.txt -output=/data/recovered.meta
-#   kubectl -n vdm cp vdm/log-recover:/data/recovered.meta recovered.meta
+#   # printf '/data/1.dat\n/data/2.dat\n' > /tmp/list.txt
+#   # dat_recover -datList=/tmp/list.txt -output=/tmp/recovered.meta
+#   kubectl -n vdm cp vdm/log-recover:/tmp/recovered.meta recovered.meta
 #   kubectl -n vdm delete pod log-recover
 #
-# NOTE: if the volume server PVC is ReadWriteOnce, this pod must be scheduled
-# on the same node as the volume server pod (add nodeSelector/affinity below).
+# The volume server PVC is ReadWriteOnce, so we mount the node's data
+# directory via hostPath instead. The pod MUST run on the same node as the
+# volume server pod (see nodeName below).
+#
+# How to find the host path of the PVC:
+#   NODE=$(kubectl -n vdm get pod seaweed-volume-0 -o jsonpath='{.spec.nodeName}')
+#   PV=$(kubectl -n vdm get pvc <PVC_NAME> -o jsonpath='{.spec.volumeName}')
+#   kubectl get pv $PV -o jsonpath='{.spec.local.path}'      # local PV
+#   kubectl get pv $PV -o jsonpath='{.spec.hostPath.path}'   # hostPath PV
 apiVersion: v1
 kind: Pod
 metadata:
@@ -19,6 +26,8 @@ metadata:
     app: log-recover
 spec:
   restartPolicy: Never
+  # must be the node where the volume server pod runs
+  nodeName: REPLACE_ME_NODE
   containers:
     - name: log-recover
       image: vdm-registry.cn-hangzhou.cr.aliyuncs.com/udm-dev/log-recover:0.1
@@ -35,7 +44,6 @@ spec:
           memory: 8Gi   # path-state aggregation for all volumes; tune as needed
   volumes:
     - name: weed-data
-      persistentVolumeClaim:
-        claimName: REPLACE_ME   # <-- volume server data PVC name
-      # If the .dat files live in a subPath of the PVC (e.g. data0/), either
-      # set subPath: "data0" here or list files as /data/data0/1.dat in list.txt.
+      hostPath:
+        path: REPLACE_ME_HOST_PATH   # <-- node directory backing the volume server PVC
+        type: Directory
