@@ -65,7 +65,6 @@ func equalIds(got, want []uint32) bool {
 func TestVolumeFilterSelects(t *testing.T) {
 	topo := filterTestTopology(t)
 	collection := func(name string) *string { return &name }
-	volume := func(id uint32) *needle.VolumeId { v := needle.VolumeId(id); return &v }
 
 	for _, tc := range []struct {
 		name          string
@@ -78,13 +77,51 @@ func TestVolumeFilterSelects(t *testing.T) {
 		// Asking for it must not read as asking for everything.
 		{"the default collection", VolumeFilter{Collection: collection("")}, []uint32{1}, nil},
 		{"a collection nothing is in", VolumeFilter{Collection: collection("none")}, nil, nil},
-		{"one volume", VolumeFilter{VolumeId: volume(3)}, []uint32{3}, nil},
-		{"one ec volume", VolumeFilter{VolumeId: volume(9)}, nil, []uint32{9}},
-		{"both, agreeing", VolumeFilter{Collection: collection("other"), VolumeId: volume(3)}, []uint32{3}, nil},
-		{"both, disagreeing", VolumeFilter{Collection: collection("c"), VolumeId: volume(3)}, nil, nil},
+		{"one volume", VolumeFilter{VolumeIDs: map[needle.VolumeId]struct{}{3: {}}}, []uint32{3}, nil},
+		{"one ec volume", VolumeFilter{VolumeIDs: map[needle.VolumeId]struct{}{9: {}}}, nil, []uint32{9}},
+		{"both, agreeing", VolumeFilter{Collection: collection("other"), VolumeIDs: map[needle.VolumeId]struct{}{3: {}}}, []uint32{3}, nil},
+		{"both, disagreeing", VolumeFilter{Collection: collection("c"), VolumeIDs: map[needle.VolumeId]struct{}{3: {}}}, nil, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			volumes, ecVolumes := listed(topo.ToTopologyInfo(tc.filter))
+			if !equalIds(volumes, tc.wantVolumes) {
+				t.Errorf("listed volumes %v, want %v", volumes, tc.wantVolumes)
+			}
+			if !equalIds(ecVolumes, tc.wantEcVolumes) {
+				t.Errorf("listed ec volumes %v, want %v", ecVolumes, tc.wantEcVolumes)
+			}
+		})
+	}
+}
+
+// an id nothing answers to narrows the listing rather than widening it.
+func TestVolumeFilterVolumeIDs(t *testing.T) {
+	topo := filterTestTopology(t)
+
+	for _, tc := range []struct {
+		name          string
+		ids           []needle.VolumeId
+		wantVolumes   []uint32
+		wantEcVolumes []uint32
+	}{
+		// No id asked of the filter, so every volume is listed. NewVolumeFilter
+		// hands out an empty map for this, which must read the same as none.
+		{"no id asked", nil, []uint32{1, 2, 3}, []uint32{8, 9}},
+		{"one regular volume asked", []needle.VolumeId{2}, []uint32{2}, nil},
+		{"one ec volume asked", []needle.VolumeId{8}, nil, []uint32{8}},
+		// Both kinds answer to the same set of ids.
+		{"both kinds asked", []needle.VolumeId{1, 8}, []uint32{1}, []uint32{8}},
+		{"every volume asked", []needle.VolumeId{1, 2, 3, 8, 9}, []uint32{1, 2, 3}, []uint32{8, 9}},
+		// An id nothing answers to must not read as asking for everything.
+		{"a missing id", []needle.VolumeId{7}, nil, nil},
+		{"a found and a missing id", []needle.VolumeId{2, 7}, []uint32{2}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids := make(map[needle.VolumeId]struct{}, len(tc.ids))
+			for _, id := range tc.ids {
+				ids[id] = struct{}{}
+			}
+			volumes, ecVolumes := listed(topo.ToTopologyInfo(VolumeFilter{VolumeIDs: ids}))
 			if !equalIds(volumes, tc.wantVolumes) {
 				t.Errorf("listed volumes %v, want %v", volumes, tc.wantVolumes)
 			}
@@ -206,12 +243,9 @@ func TestNewVolumeFilterReadsTheRequest(t *testing.T) {
 		})
 	}
 
-	if f := NewVolumeFilter(&master_pb.VolumeListRequest{}); f.VolumeId != nil {
-		t.Error("a zero volume id must not filter")
-	}
 	f := NewVolumeFilter(&master_pb.VolumeListRequest{VolumeId: 7})
-	if f.VolumeId == nil || uint32(*f.VolumeId) != 7 {
-		t.Errorf("volume id not carried across: %v", f.VolumeId)
+	if _, ok := f.VolumeIDs[7]; !ok {
+		t.Errorf("volume id not carried across: %v", f.VolumeIDs)
 	}
 }
 
