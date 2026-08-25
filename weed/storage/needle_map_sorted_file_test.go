@@ -132,3 +132,78 @@ func fileSize(t *testing.T, path string) int64 {
 	}
 	return st.Size()
 }
+
+// TestSortedFileNeedleMap_FdsReleasedAndOnDemandAccess verifies that
+// construction releases the .idx/.sdx fds and that Get/Delete/Sync/
+// IndexFileSize/ReadIndexEntry all work on demand afterwards.
+func TestSortedFileNeedleMap_FdsReleasedAndOnDemandAccess(t *testing.T) {
+	dir := t.TempDir()
+	baseName := filepath.Join(dir, "v1")
+	idxPath := baseName + ".idx"
+
+	const putCount = 4
+	idxFile, err := os.Create(idxPath)
+	if err != nil {
+		t.Fatalf("create idx: %v", err)
+	}
+	writer := NewCompactNeedleMap(idxFile)
+	for i := 0; i < putCount; i++ {
+		key := Uint64ToNeedleId(uint64(i + 1))
+		off := Uint32ToOffset(uint32((i + 1) * 8))
+		if err := writer.Put(key, off, Size(1024)); err != nil {
+			writer.Close()
+			t.Fatalf("put %d: %v", i, err)
+		}
+	}
+	writer.Close()
+
+	idxFile, err = os.OpenFile(idxPath, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("reopen idx: %v", err)
+	}
+	m, err := NewSortedFileNeedleMap(baseName, idxFile, needle.GetCurrentVersion())
+	if err != nil {
+		t.Fatalf("NewSortedFileNeedleMap: %v", err)
+	}
+	defer m.Close()
+
+	if m.indexFile != nil {
+		t.Fatalf("indexFile fd not released after construction")
+	}
+
+	// Get re-opens .sdx on demand
+	nv, ok := m.Get(Uint64ToNeedleId(2))
+	if !ok || nv.Offset != Uint32ToOffset(uint32(2*8)) || nv.Size != 1024 {
+		t.Fatalf("Get on-demand: ok=%v offset=%v size=%v", ok, nv.Offset, nv.Size)
+	}
+	if _, ok := m.Get(Uint64ToNeedleId(999)); ok {
+		t.Fatalf("Get of missing key unexpectedly succeeded")
+	}
+
+	// stat/Sync/ReadIndexEntry must work without a held fd
+	if got, want := m.IndexFileSize(), uint64(putCount)*uint64(NeedleMapEntrySize); got != want {
+		t.Fatalf("IndexFileSize: got %d, want %d", got, want)
+	}
+	if err := m.Sync(); err != nil {
+		t.Fatalf("Sync with released fd: %v", err)
+	}
+	key, _, size, err := m.ReadIndexEntry(0)
+	if err != nil || key != Uint64ToNeedleId(1) || size != 1024 {
+		t.Fatalf("ReadIndexEntry: key=%v size=%v err=%v", key, size, err)
+	}
+	if m.indexFile == nil {
+		t.Fatalf("ReadIndexEntry should have re-opened the .idx fd")
+	}
+
+	// Delete appends a tombstone via the re-opened .idx, then Get reports deleted
+	if err := m.Delete(Uint64ToNeedleId(3), Uint32ToOffset(uint32(3*8))); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	nv, ok = m.Get(Uint64ToNeedleId(3))
+	if !ok || !nv.Size.IsDeleted() {
+		t.Fatalf("Get after delete: ok=%v size=%v (want tombstone)", ok, nv.Size)
+	}
+	if got, want := m.IndexFileSize(), uint64(putCount+1)*uint64(NeedleMapEntrySize); got != want {
+		t.Fatalf("IndexFileSize after delete: got %d, want %d", got, want)
+	}
+}
