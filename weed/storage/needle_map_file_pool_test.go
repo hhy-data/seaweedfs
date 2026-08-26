@@ -73,11 +73,11 @@ func TestSortedFileNeedleMap_HoldsNoDescriptors(t *testing.T) {
 			t.Fatalf("new volume: %v", err)
 		}
 		for i := 1; i <= 8; i++ {
-			if _, _, _, err := v.writeNeedle2(newRandomNeedle(uint64(i)), true, false, false); err != nil {
+			if _, _, _, err := v.writeNeedle2(newRandomNeedle(uint64(i)), true, false); err != nil {
 				t.Fatalf("write needle %d: %v", i, err)
 			}
 		}
-		v.PersistReadOnly(true, true)
+		v.PersistReadOnly(true)
 		v.Close()
 
 		v, err = NewVolume(dir, dir, "", 1, NeedleMapInMemory, &super_block.ReplicaPlacement{}, &needle.TTL{}, 0, needle.GetCurrentVersion(), 0, 0)
