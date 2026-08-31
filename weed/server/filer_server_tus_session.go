@@ -370,8 +370,16 @@ func (fs *FilerServer) completeTusUpload(ctx context.Context, session *TusSessio
 		Chunks: fileChunks,
 	}
 
+	// Apply the same storage rule (read-only prefixes, TTL) and WORM protections
+	// the normal write path enforces before landing the entry at the
+	// client-chosen target path.
+	so, err := fs.applyStorageDefaultsToEntry(ctx, entry)
+	if err != nil {
+		return err
+	}
+
 	// Ensure parent directory exists
-	if err := fs.filer.CreateEntry(ctx, entry, nil, false, false, nil, false, fs.filer.MaxFilenameLength); err != nil {
+	if err := fs.filer.CreateEntry(ctx, entry, nil, false, false, nil, false, so.MaxFileNameLength); err != nil {
 		return fmt.Errorf("create final file entry: %w", err)
 	}
 
