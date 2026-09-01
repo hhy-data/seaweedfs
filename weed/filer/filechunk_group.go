@@ -18,6 +18,10 @@ type ChunkGroup struct {
 	sectionsLock      sync.RWMutex
 	readerCache       *ReaderCache
 	concurrentReaders int
+	// cacheInvalidator, when non-nil, lets failed chunk and manifest fetches
+	// drop stale volume locations and retry against fresh ones. Assigned at
+	// construction time (see NewChunkGroup), so safe to read without a lock.
+	cacheInvalidator CacheInvalidator
 }
 
 // NewChunkGroup creates a ChunkGroup with configurable concurrency.
@@ -26,7 +30,9 @@ type ChunkGroup struct {
 // - Read-ahead prefetch parallelism
 // - Number of concurrent section reads for large files
 // If concurrentReaders <= 0, defaults to 16.
-func NewChunkGroup(lookupFn wdclient.LookupFileIdFunctionType, chunkCache chunk_cache.ChunkCache, chunks []*filer_pb.FileChunk, concurrentReaders int) (*ChunkGroup, error) {
+// cacheInvalidator, when non-nil, lets failed chunk fetches drop stale volume
+// locations and retry against fresh ones (e.g. mount passes its FilerClient).
+func NewChunkGroup(lookupFn wdclient.LookupFileIdFunctionType, chunkCache chunk_cache.ChunkCache, chunks []*filer_pb.FileChunk, concurrentReaders int, cacheInvalidator CacheInvalidator) (*ChunkGroup, error) {
 	if concurrentReaders <= 0 {
 		concurrentReaders = 16
 	}
@@ -38,11 +44,15 @@ func NewChunkGroup(lookupFn wdclient.LookupFileIdFunctionType, chunkCache chunk_
 	if readerCacheLimit < 32 {
 		readerCacheLimit = 32
 	}
+	readerCache := NewReaderCache(readerCacheLimit, chunkCache, lookupFn)
+	// assigned before any downloader goroutine can start, so no lock needed
+	readerCache.cacheInvalidator = cacheInvalidator
 	group := &ChunkGroup{
 		lookupFn:          lookupFn,
 		sections:          make(map[SectionIndex]*FileChunkSection),
-		readerCache:       NewReaderCache(readerCacheLimit, chunkCache, lookupFn),
+		readerCache:       readerCache,
 		concurrentReaders: concurrentReaders,
+		cacheInvalidator:  cacheInvalidator,
 	}
 
 	err := group.SetChunks(chunks)
@@ -227,7 +237,7 @@ func (group *ChunkGroup) SetChunks(chunks []*filer_pb.FileChunk) error {
 			continue
 		}
 
-		resolvedChunks, err := ResolveOneChunkManifest(context.Background(), group.lookupFn, chunk)
+		resolvedChunks, err := ResolveOneChunkManifest(context.Background(), group.lookupFn, chunk, group.cacheInvalidator)
 		if err != nil {
 			return err
 		}

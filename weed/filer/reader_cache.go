@@ -17,6 +17,10 @@ import (
 type ReaderCache struct {
 	chunkCache     chunk_cache.ChunkCache
 	lookupFileIdFn wdclient.LookupFileIdFunctionType
+	// cacheInvalidator, when set, lets failed fetches drop stale volume
+	// locations and retry against fresh ones. Only assigned at construction
+	// time (see NewChunkGroup), before any downloader goroutine starts.
+	cacheInvalidator CacheInvalidator
 	sync.Mutex
 	downloaders map[string]*SingleChunkCacher
 	limit       int
@@ -208,6 +212,15 @@ func (s *SingleChunkCacher) startCaching() {
 	// This allows multiple downloads to proceed in parallel
 	data := mem.Allocate(s.chunkSize)
 	_, fetchErr := util_http.RetriedFetchChunkData(context.Background(), data, urlStrings, s.cipherKey, s.isGzipped, true, 0, s.chunkFileId)
+	if fetchErr != nil {
+		// Self-heal: the cached volume locations may be stale (volume moved,
+		// volume server rolled, replica layout changed). Drop them, re-lookup
+		// and retry once with the fresh locations.
+		fetchErr = retryFetchWithFreshLocations(context.Background(), s.parent.cacheInvalidator, s.parent.lookupFileIdFn, s.chunkFileId, urlStrings, fetchErr, func(newUrls []string) error {
+			_, err := util_http.RetriedFetchChunkData(context.Background(), data, newUrls, s.cipherKey, s.isGzipped, true, 0, s.chunkFileId)
+			return err
+		})
+	}
 
 	// Now acquire lock to update state
 	s.Lock()

@@ -673,6 +673,16 @@ func (wfs *WFS) LookupFn() wdclient.LookupFileIdFunctionType {
 	return wfs.filerClient.GetLookupFileIdFunction()
 }
 
+// CacheInvalidator lets chunk read failures drop stale volume locations from
+// the FilerClient cache and retry against fresh ones. Returns nil in proxy
+// mode or when the FilerClient is not initialized.
+func (wfs *WFS) CacheInvalidator() filer.CacheInvalidator {
+	if wfs.filerClient == nil {
+		return nil
+	}
+	return wfs.filerClient
+}
+
 func (wfs *WFS) getCurrentFiler() pb.ServerAddress {
 	i := atomic.LoadInt32(&wfs.option.filerIndex)
 	return wfs.option.FilerAddresses[i]

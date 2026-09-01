@@ -126,6 +126,36 @@ func urlSlicesEqual(a, b []string) bool {
 	return true
 }
 
+// retryFetchWithFreshLocations is the self-heal for chunk read paths: when a
+// fetch fails, invalidate the cached volume locations, re-lookup, and retry
+// only when the resolved locations actually changed (so we never retry against
+// the same servers). originalErr is returned unchanged when no retry is
+// attempted, so callers surface the real fetch failure.
+func retryFetchWithFreshLocations(ctx context.Context, invalidator CacheInvalidator, lookupFn wdclient.LookupFileIdFunctionType, fileId string, oldUrls []string, originalErr error, refetch func(newUrls []string) error) error {
+	if invalidator == nil || lookupFn == nil {
+		return originalErr
+	}
+
+	glog.V(0).InfofCtx(ctx, "read chunk %s failed, invalidating volume locations and retrying: %v", fileId, originalErr)
+	invalidator.InvalidateCache(fileId)
+
+	newUrls, lookupErr := lookupFn(ctx, fileId)
+	if lookupErr != nil {
+		glog.WarningfCtx(ctx, "failed to re-lookup chunk %s after cache invalidation: %v", fileId, lookupErr)
+		return originalErr
+	}
+	if len(newUrls) == 0 {
+		return originalErr
+	}
+	if urlSlicesEqual(oldUrls, newUrls) {
+		// locations unchanged - retrying would hit the same servers
+		return originalErr
+	}
+
+	glog.V(0).InfofCtx(ctx, "retrying read chunk %s with %d new locations", fileId, len(newUrls))
+	return refetch(newUrls)
+}
+
 func PrepareStreamContentWithThrottler(ctx context.Context, masterClient wdclient.HasLookupFileIdFunction, jwtFunc VolumeServerJwtFunction, chunks []*filer_pb.FileChunk, offset int64, size int64, downloadMaxBytesPs int64) (DoStreamContent, error) {
 	glog.V(4).InfofCtx(ctx, "prepare to stream content for chunks: %d", len(chunks))
 	chunkViews := ViewFromChunks(ctx, masterClient.GetLookupFileIdFunction(), chunks, offset, size)
