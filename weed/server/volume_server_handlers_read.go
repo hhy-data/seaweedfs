@@ -75,6 +75,8 @@ func (vs *VolumeServer) proxyReqToTargetServer(w http.ResponseWriter, r *http.Re
 			break
 		}
 	}
+	glog.V(0).Infof("[selfheal-debug] proxy %s from %s: master lookup => %+v, chosen target=%s, ReadMode=%q",
+		r.URL.Path, location, lookupResult.Locations, targetUrl, vs.ReadMode)
 	if targetUrl == nil {
 		stats.VolumeServerFileReadInvalidNeedles.Inc()
 		stats.VolumeServerHandlerCounter.WithLabelValues(stats.EmptyReadProxyLoc).Inc()
@@ -165,6 +167,8 @@ func (vs *VolumeServer) GetOrHeadHandler(w http.ResponseWriter, r *http.Request)
 	hasVolume := vs.store.HasVolume(volumeId)
 	_, hasEcVolume := vs.store.FindEcVolume(volumeId)
 	if !hasVolume && !hasEcVolume {
+		glog.V(0).Infof("[selfheal-debug] vol server %s:%d does NOT have volume %s (%s): ReadMode=%q, will proxy/redirect",
+			vs.store.Ip, vs.store.Port, volumeId, r.URL.Path, vs.ReadMode)
 		if vs.ReadMode == "local" {
 			stats.VolumeServerFileReadInvalidNeedles.Inc()
 			glog.V(0).Infoln("volume is not local:", err, r.URL.Path)

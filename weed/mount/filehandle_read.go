@@ -41,7 +41,7 @@ func (fh *FileHandle) readFromChunksWithContext(ctx context.Context, buff []byte
 	remoteOnly := entry.Entry.IsInRemoteOnly()
 	entry.RUnlock()
 	if remoteOnly {
-		glog.V(4).Infof("download remote entry %s", fileFullPath)
+		glog.V(0).Infof("[selfheal-debug] read %s [%d,%d): entry remoteOnly, downloading remote entry first", fileFullPath, offset, offset+int64(len(buff)))
 		err := fh.downloadRemoteEntry(entry)
 		if err != nil {
 			glog.V(1).Infof("download remote entry %s: %v", fileFullPath, err)
@@ -77,12 +77,13 @@ func (fh *FileHandle) readFromChunksWithContext(ctx context.Context, buff []byte
 
 	if offset < int64(len(content)) {
 		totalRead := copy(buff, content[offset:])
-		glog.V(4).Infof("file handle read cached %s [%d,%d] %d", fileFullPath, offset, offset+int64(totalRead), totalRead)
+		glog.V(0).Infof("[selfheal-debug] read %s [%d,%d): served from INLINE entry content, %d bytes", fileFullPath, offset, offset+int64(totalRead), totalRead)
 		return int64(totalRead), 0, nil
 	}
 
 	// Try RDMA acceleration first if available
 	if fh.wfs.rdmaClient != nil && fh.wfs.option.RdmaEnabled {
+		glog.V(0).Infof("[selfheal-debug] read %s [%d,%d): trying RDMA path", fileFullPath, offset, offset+int64(len(buff)))
 		totalRead, ts, err := fh.tryRDMARead(ctx, fileSize, buff, offset, chunks)
 		if err == nil {
 			glog.V(4).Infof("RDMA read successful for %s [%d,%d] %d", fileFullPath, offset, offset+int64(totalRead), totalRead)
@@ -95,6 +96,7 @@ func (fh *FileHandle) readFromChunksWithContext(ctx context.Context, buff []byte
 	// Any failure falls through transparently. See design-weed-mount-
 	// peer-chunk-sharing.md §4.3.
 	if fh.wfs.option.PeerEnabled && fh.wfs.peerGrpcServer != nil {
+		glog.V(0).Infof("[selfheal-debug] read %s [%d,%d): trying PEER chunk sharing path", fileFullPath, offset, offset+int64(len(buff)))
 		totalRead, ts, err := fh.tryPeerRead(ctx, fileSize, buff, offset, chunks)
 		if err == nil {
 			glog.V(4).Infof("peer read successful for %s [%d,%d] %d", fileFullPath, offset, offset+int64(totalRead), totalRead)
@@ -109,11 +111,14 @@ func (fh *FileHandle) readFromChunksWithContext(ctx context.Context, buff []byte
 	}
 
 	// Fall back to normal chunk reading
+	glog.V(0).Infof("[selfheal-debug] read %s [%d,%d): falling back to entryChunkGroup.ReadDataAt (volume servers)", fileFullPath, offset, offset+int64(len(buff)))
 	totalRead, ts, err := fh.entryChunkGroup.ReadDataAt(ctx, fileSize, buff, offset)
 
 	if err != nil && err != io.EOF {
 		glog.Errorf("file handle read %s: %v", fileFullPath, err)
 	}
+
+	glog.V(0).Infof("[selfheal-debug] read %s [%d,%d): volume read => %d bytes, err=%v", fileFullPath, offset, offset+int64(len(buff)), totalRead, err)
 
 	// glog.V(4).Infof("file handle read %s [%d,%d] %d : %v", fileFullPath, offset, offset+int64(totalRead), totalRead, err)
 

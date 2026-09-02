@@ -184,6 +184,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 			return cacheN, cacheErr
 		}
 	} else {
+		glog.V(0).Infof("[selfheal-debug] udm ReadAt %s off=%d len=%d: served from INTERNAL CACHE %s (readDisabled=%v)", f.key, off, length, udmCacheFile, f.readDisabled)
 		return cacheN, nil
 	}
 
@@ -209,6 +210,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 
 	defer f.backendStorage.cache.UpdateAccess(cacheFile)
 
+	glog.V(0).Infof("[selfheal-debug] udm ReadAt %s off=%d len=%d: served from TRANS RECALL cache %s", f.key, off, length, cacheFile)
 	return f.readAtInternalCache(cacheFile, p, off)
 }
 
