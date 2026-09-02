@@ -111,6 +111,7 @@ func fetchWholeChunk(ctx context.Context, bytesBuffer *bytes.Buffer, lookupFileI
 	}
 	jwt := JwtForVolumeServer(fileId)
 	_, err = retriedStreamFetchChunkData(ctx, bytesBuffer, urlStrings, jwt, cipherKey, isGzipped, true, 0, 0)
+	glog.V(0).InfofCtx(ctx, "[selfheal-debug] fetchWholeChunk %s via %v => %d bytes, err=%v", fileId, urlStrings, bytesBuffer.Len(), err)
 	if err != nil {
 		return err
 	}
@@ -123,7 +124,9 @@ func fetchChunkRange(ctx context.Context, buffer []byte, lookupFileIdFn wdclient
 		glog.ErrorfCtx(ctx, "operation LookupFileId %s failed, err: %v", fileId, err)
 		return 0, err
 	}
-	return util_http.RetriedFetchChunkData(ctx, buffer, urlStrings, cipherKey, isGzipped, false, offset, fileId)
+	n, fetchErr := util_http.RetriedFetchChunkData(ctx, buffer, urlStrings, cipherKey, isGzipped, false, offset, fileId)
+	glog.V(0).InfofCtx(ctx, "[selfheal-debug] fetchChunkRange %s offset=%d via %v => n=%d, err=%v", fileId, offset, urlStrings, n, fetchErr)
+	return n, fetchErr
 }
 
 func retriedStreamFetchChunkData(ctx context.Context, writer io.Writer, urlStrings []string, jwt string, cipherKey []byte, isGzipped bool, isFullChunk bool, offset int64, size int) (written int64, err error) {

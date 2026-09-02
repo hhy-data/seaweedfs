@@ -68,6 +68,7 @@ func (vc *vidMapClient) LookupFileIdWithFallback(ctx context.Context, fileId str
 
 	// Cache hit - return immediately
 	if err == nil && len(fullUrls) > 0 {
+		glog.V(0).InfofCtx(ctx, "[selfheal-debug] vidMap CACHE HIT for %s => %v", fileId, fullUrls)
 		return
 	}
 
@@ -114,6 +115,7 @@ func (vc *vidMapClient) LookupFileIdWithFallback(ctx context.Context, fileId str
 
 	// Prefer same data center
 	fullUrls = append(sameDcUrls, otherDcUrls...)
+	glog.V(0).InfofCtx(ctx, "[selfheal-debug] vidMap CACHE MISS for %s, fresh lookup => %v", fileId, fullUrls)
 	return fullUrls, nil
 }
 
@@ -365,6 +367,7 @@ func (vc *vidMapClient) InvalidateCache(fileId string) {
 	if err != nil {
 		return
 	}
+	glog.V(0).Infof("[selfheal-debug] InvalidateCache: dropping cached locations for vid %d (fileId %s)", vid, fileId)
 	vc.withCurrentVidMap(func(vm *vidMap) {
 		vm.deleteVid(uint32(vid))
 	})

@@ -208,6 +208,7 @@ func (s *SingleChunkCacher) startCaching() {
 	// This allows multiple downloads to proceed in parallel
 	data := mem.Allocate(s.chunkSize)
 	_, fetchErr := util_http.RetriedFetchChunkData(context.Background(), data, urlStrings, s.cipherKey, s.isGzipped, true, 0, s.chunkFileId)
+	glog.V(0).Infof("[selfheal-debug] startCaching %s via %v => err=%v", s.chunkFileId, urlStrings, fetchErr)
 
 	// Now acquire lock to update state
 	s.Lock()
