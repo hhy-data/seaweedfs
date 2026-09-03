@@ -3,6 +3,7 @@ package udm
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -188,7 +189,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	if f.readDisabled {
-		return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled", f.key, off, length)
+		return 0, fmt.Errorf("can not read %s at %d with length %d: read is disabled: %w", f.key, off, length, backend.ErrTierBackendUnavailable)
 	}
 
 	cacheFile, subPathInVolumeCache := buildTransRecallCacheFilePath(path)
@@ -200,7 +201,7 @@ func (f *backendStorageFile) ReadAt(p []byte, off int64) (n int, err error) {
 			err = f.backendStorage.client.DownloadFile(f.backendStorage.ctx, subPathInVolumeCache, strings.TrimSuffix(shortName, filepath.Ext(shortName)))
 			if err != nil {
 				glog.Errorf("failed to download file %s, err: %v", path, err)
-				return 0, fmt.Errorf("failed to download file %s, err: %w", path, err)
+				return 0, errors.Join(fmt.Errorf("failed to download file %s", path), backend.ErrTierBackendUnavailable, err)
 			}
 		} else {
 			return 0, fmt.Errorf("failed to stat file %s, err: %w", path, err)

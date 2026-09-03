@@ -62,7 +62,7 @@ func (vs *VolumeServer) checkDownloadLimit(w http.ResponseWriter, r *http.Reques
 		r.URL.Path, inFlightDownloadSize, vs.concurrentDownloadLimit)
 
 	// Try to proxy to replica if available
-	if vs.tryProxyToReplica(w, r) {
+	if vs.tryProxyToReplica(w, r, "") {
 		return false // handled by proxy
 	}
 
@@ -71,10 +71,14 @@ func (vs *VolumeServer) checkDownloadLimit(w http.ResponseWriter, r *http.Reques
 }
 
 // tryProxyToReplica attempts to proxy the request to a replica server if the volume has replication.
+// The reason label is recorded for observability and may be stats.TierFallbackProxy,
+// stats.DownloadLimitCond, or empty to inherit only the generic ReadProxyReq/ReadRedirectReq counters
+// inside proxyReqToTargetServer.
+//
 // Returns:
 //   - true:  Request was handled (either proxied successfully or failed with error response)
 //   - false: No proxy available (volume has no replicas or request already proxied)
-func (vs *VolumeServer) tryProxyToReplica(w http.ResponseWriter, r *http.Request) bool {
+func (vs *VolumeServer) tryProxyToReplica(w http.ResponseWriter, r *http.Request, reason string) bool {
 	if r.URL.Query().Get(reqIsProxied) == "true" {
 		return false // already proxied
 	}
@@ -89,6 +93,9 @@ func (vs *VolumeServer) tryProxyToReplica(w http.ResponseWriter, r *http.Request
 
 	volume := vs.store.GetVolume(volumeId)
 	if volume != nil && volume.ReplicaPlacement != nil && volume.ReplicaPlacement.HasReplication() {
+		if reason != "" {
+			stats.VolumeServerHandlerCounter.WithLabelValues(reason).Inc()
+		}
 		vs.proxyReqToTargetServer(w, r)
 		return true // handled by proxy
 	}
