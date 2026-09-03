@@ -12,6 +12,7 @@ const (
 	ReadRedirectReq    = "readRedirectRequest"
 	EmptyReadProxyLoc  = "emptyReadProxyLocaction"
 	FailedReadProxyReq = "failedReadProxyRequest"
+	TierFallbackProxy  = "tierFallbackProxy"
 
 	ErrorSizeMismatchOffsetSize = "errorSizeMismatchOffsetSize"
 	ErrorSizeMismatch           = "errorSizeMismatch"
