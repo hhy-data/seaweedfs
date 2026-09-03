@@ -132,7 +132,13 @@ func urlSlicesEqual(a, b []string) bool {
 // the same servers). originalErr is returned unchanged when no retry is
 // attempted, so callers surface the real fetch failure.
 func retryFetchWithFreshLocations(ctx context.Context, invalidator CacheInvalidator, lookupFn wdclient.LookupFileIdFunctionType, fileId string, oldUrls []string, originalErr error, refetch func(newUrls []string) error) error {
-	if invalidator == nil || lookupFn == nil {
+	// the caller may have gone away between its own check and this one; a
+	// cancelled read is no evidence the locations are wrong, and callers such
+	// as volume.fsck tell an abort from real corruption with errors.Is
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if invalidator == nil {
 		return originalErr
 	}
 
@@ -142,10 +148,11 @@ func retryFetchWithFreshLocations(ctx context.Context, invalidator CacheInvalida
 	newUrls, lookupErr := lookupFn(ctx, fileId)
 	if lookupErr != nil {
 		glog.WarningfCtx(ctx, "failed to re-lookup chunk %s after cache invalidation: %v", fileId, lookupErr)
-		return originalErr
+		return fmt.Errorf("re-lookup chunk %s after cache invalidation: %w", fileId, lookupErr)
 	}
 	if len(newUrls) == 0 {
-		return originalErr
+		glog.WarningfCtx(ctx, "re-lookup for chunk %s returned no locations, skipping retry", fileId)
+		return fmt.Errorf("re-lookup chunk %s returned no locations", fileId)
 	}
 	if urlSlicesEqual(oldUrls, newUrls) {
 		// locations unchanged - retrying would hit the same servers
