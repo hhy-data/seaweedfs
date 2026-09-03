@@ -3,6 +3,7 @@ package filer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -41,13 +42,13 @@ func (l *twoStageLookupFn) lookup(ctx context.Context, fileId string) ([]string,
 	return l.freshUrls, nil
 }
 
-// TestFetchWholeChunkSelfHealOnStaleLocation verifies that when the first
-// retriedStreamFetchChunkData attempt fails (stale volume location returning
-// HTTP 500), fetchWholeChunk invalidates the cache, re-looks up, and retries
-// against the fresh location. Without this, mount reads of large multipart
-// files whose manifest chunk's volume has moved would permanently fail.
-func TestFetchWholeChunkSelfHealOnStaleLocation(t *testing.T) {
-	// Build a valid FileChunkManifest protobuf for the fresh response.
+// TestFetchWholeChunkRetriesFreshLocations covers the mount reading a multipart
+// file whose manifest volume has moved: the cached location is dead, so the
+// fetch has to drop it and come back with what the master knows now. The stale
+// server streams a prefix before dying, which the retry must not keep - an HTTP
+// error status returns before ReadUrlAsStream ever calls the writer, so a 500
+// never exercises the Reset the retry path relies on.
+func TestFetchWholeChunkRetriesFreshLocations(t *testing.T) {
 	manifest := &filer_pb.FileChunkManifest{
 		Chunks: []*filer_pb.FileChunk{
 			{FileId: "100,abc", Offset: 0, Size: 8},
@@ -59,18 +60,20 @@ func TestFetchWholeChunkSelfHealOnStaleLocation(t *testing.T) {
 		t.Fatalf("proto.Marshal: %v", err)
 	}
 
-	// Stale endpoint: 500 with a non-empty body so the streaming writer may
-	// have already appended some bytes to bytesBuffer before the error status
-	// was processed. This proves the bytesBuffer.Reset() before retry is needed.
+	// Stale endpoint: stream a short prefix and then panic mid-body so the
+	// client sees a real read failure after partial bytes are appended. The
+	// panic lets net/http close the connection without sending a status code.
 	staleSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("garbage-from-stale-server"))
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(manifestBytes)+64))
+		w.Write([]byte("garbage-from-stale-server"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		panic(http.ErrAbortHandler)
 	}))
 	defer staleSrv.Close()
 
-	// Fresh endpoint: 200 with valid gzipped (since isFullChunk=true triggers
-	// gzip accept) or plain protobuf bytes. We use plain bytes because the
-	// stream reader only applies gzip when the response says so.
+	// Fresh endpoint: full manifest, served normally.
 	freshSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(manifestBytes)))
 		w.WriteHeader(http.StatusOK)
@@ -88,11 +91,9 @@ func TestFetchWholeChunkSelfHealOnStaleLocation(t *testing.T) {
 	bytesBuffer.Reset()
 	defer bytesBufferPool.Put(bytesBuffer)
 
-	err = fetchWholeChunk(context.Background(), bytesBuffer, lookup.lookup, "5,stale", nil, false, inv)
-	if err != nil {
+	if err := fetchWholeChunk(context.Background(), bytesBuffer, lookup.lookup, "5,stale", nil, false, inv); err != nil {
 		t.Fatalf("fetchWholeChunk returned error after self-heal: %v", err)
 	}
-
 	if got := inv.invalidations.Load(); got != 1 {
 		t.Errorf("expected exactly 1 InvalidateCache call, got %d", got)
 	}
@@ -100,10 +101,9 @@ func TestFetchWholeChunkSelfHealOnStaleLocation(t *testing.T) {
 		t.Errorf("expected exactly 2 lookup calls (initial + re-lookup), got %d", got)
 	}
 
-	// Buffer must contain only the fresh manifest bytes, never the stale
-	// "garbage-from-stale-server" prefix that the first attempt may have
-	// streamed before returning 500. If bytesBuffer.Reset() were skipped, the
-	// prefix would survive and proto.Unmarshal would fail.
+	// The buffer must hold the fresh manifest alone, not the stale prefix that
+	// streamed ahead of it. Without bytesBuffer.Reset() before retry the
+	// garbage prefix would survive and proto.Unmarshal would fail.
 	got := bytesBuffer.Bytes()
 	if bytes.Contains(got, []byte("garbage-from-stale-server")) {
 		t.Errorf("bytesBuffer still contains stale prefix; Reset() before retry is missing")
@@ -114,7 +114,7 @@ func TestFetchWholeChunkSelfHealOnStaleLocation(t *testing.T) {
 		t.Fatalf("proto.Unmarshal of fetched buffer: %v", err)
 	}
 	if len(decoded.Chunks) != 2 {
-		t.Errorf("expected 2 manifest chunks, got %d", len(decoded.Chunks))
+		t.Fatalf("expected 2 manifest chunks, got %d", len(decoded.Chunks))
 	}
 	if decoded.Chunks[0].FileId != "100,abc" || decoded.Chunks[1].FileId != "101,def" {
 		t.Errorf("unexpected manifest chunks: %+v", decoded.Chunks)
@@ -180,5 +180,58 @@ func TestFetchWholeChunkSameUrlsSkipsRetry(t *testing.T) {
 	}
 	if got := inv.invalidations.Load(); got != 1 {
 		t.Errorf("expected exactly 1 InvalidateCache call, got %d", got)
+	}
+}
+
+// TestFetchWholeChunkCancelledKeepsLocations checks that a caller walking away
+// mid-read does not cost every other reader a master round trip. A cancelled
+// read is not evidence that the locations are wrong, so the cache must stay put
+// and the cancellation must surface to the caller so they can tell their own
+// abort apart from a manifest that the network actually dropped.
+func TestFetchWholeChunkCancelledKeepsLocations(t *testing.T) {
+	lookup := &twoStageLookupFn{
+		staleUrls: []string{"http://unused:8080/5,abc"},
+		freshUrls: []string{"http://elsewhere:8080/5,abc"},
+	}
+	inv := &staleTrackingInvalidator{}
+
+	bytesBuffer := bytesBufferPool.Get().(*bytes.Buffer)
+	bytesBuffer.Reset()
+	defer bytesBufferPool.Put(bytesBuffer)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := fetchWholeChunk(ctx, bytesBuffer, lookup.lookup, "5,abc", nil, false, inv)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if got := inv.invalidations.Load(); got != 0 {
+		t.Errorf("expected no InvalidateCache calls on cancelled read, got %d", got)
+	}
+	if got := lookup.calls.Load(); got != 1 {
+		t.Errorf("expected exactly the initial lookup, got %d", got)
+	}
+
+	// The cancellation must survive the wrapping ResolveOneChunkManifest does,
+	// or volume.fsck cannot tell its own abort from a corrupt manifest.
+	manifestChunk := &filer_pb.FileChunk{FileId: "5,abc", IsChunkManifest: true}
+	if _, resolveErr := ResolveOneChunkManifest(ctx, lookup.lookup, manifestChunk, inv); !errors.Is(resolveErr, context.Canceled) {
+		t.Fatalf("ResolveOneChunkManifest should wrap context.Canceled, got %v", resolveErr)
+	}
+
+	// The nil-invalidator path also has to short-circuit on cancellation:
+	// volume.fsck resolves manifests with no invalidator and still needs to
+	// distinguish a caller-driven abort from real corruption.
+	refetchRan := false
+	noInvalidator := retryFetchWithFreshLocations(ctx, nil, lookup.lookup, "5,abc", nil, fmt.Errorf("stale server said no"), func([]string) error {
+		refetchRan = true
+		return nil
+	})
+	if !errors.Is(noInvalidator, context.Canceled) {
+		t.Fatalf("retryFetchWithFreshLocations should surface context.Canceled even with nil invalidator, got %v", noInvalidator)
+	}
+	if refetchRan {
+		t.Fatal("refetch must not run on a cancelled read")
 	}
 }
