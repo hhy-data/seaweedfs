@@ -2,7 +2,6 @@ package storage
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/volume_server_pb"
@@ -79,11 +78,8 @@ func (v *Volume) LoadRemoteFile() error {
 func (v *Volume) SaveVolumeInfo() error {
 
 	tierFileName := v.FileName(".vif")
-	if v.Ttl != nil {
-		ttlSeconds := v.Ttl.ToSeconds()
-		if ttlSeconds > 0 {
-			v.volumeInfo.ExpireAtSec = uint64(time.Now().Unix()) + ttlSeconds //calculated destroy time from the ec volume was created
-		}
+	if expireAtSec := v.ExpireAtSec(); expireAtSec > 0 {
+		v.volumeInfo.ExpireAtSec = expireAtSec
 	}
 
 	return volume_info.SaveVolumeInfo(tierFileName, v.volumeInfo)
