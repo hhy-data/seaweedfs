@@ -280,15 +280,15 @@ func moveFileToInternalCache(path string) (superBlock []byte, size int64, err er
 	fileInfo, err := os.Stat(cacheFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = os.Rename(path, cacheFile)
+			err = os.Link(path, cacheFile)
 			if err != nil {
-				glog.V(0).Infof("Failed to rename file from %s to %s, err: %s", path, cacheFile, err)
+				glog.V(0).Infof("Failed to link file from %s to %s, err: %s", path, cacheFile, err)
 				return nil, 0, err
 			}
 
 			fileInfo, err = os.Stat(cacheFile)
 			if err != nil {
-				glog.V(0).Infof("Can not stat file after rename %s", cacheFile)
+				glog.V(0).Infof("Can not stat file after link %s", cacheFile)
 				return nil, 0, err
 			}
 
