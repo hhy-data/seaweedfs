@@ -26,6 +26,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/operation"
 	"github.com/seaweedfs/seaweedfs/weed/stats"
 	"github.com/seaweedfs/seaweedfs/weed/storage"
+	"github.com/seaweedfs/seaweedfs/weed/storage/backend"
 	"github.com/seaweedfs/seaweedfs/weed/storage/erasure_coding"
 	"github.com/seaweedfs/seaweedfs/weed/storage/needle"
 	"github.com/seaweedfs/seaweedfs/weed/storage/types"
@@ -90,6 +91,7 @@ func (vs *VolumeServer) proxyReqToTargetServer(w http.ResponseWriter, r *http.Re
 		query := r.URL.Query()
 		query.Set(reqIsProxied, "true")
 		r.URL.RawQuery = query.Encode()
+		glog.V(0).Infof("proxying %s to peer %s", r.URL.Path, targetUrl.Host)
 		request, err := http.NewRequest(http.MethodGet, r.URL.String(), nil)
 		if err != nil {
 			glog.V(0).Infof("failed to instance http request of url %s: %v", r.URL.String(), err)
@@ -134,6 +136,7 @@ func (vs *VolumeServer) proxyReqToTargetServer(w http.ResponseWriter, r *http.Re
 		}
 		arg.Set(reqIsProxied, "true")
 		targetUrl.RawQuery = arg.Encode()
+		glog.V(0).Infof("redirecting %s to peer %s", r.URL.Path, targetUrl.Host)
 		http.Redirect(w, r, targetUrl.String(), http.StatusMovedPermanently)
 		return
 	}
@@ -216,6 +219,20 @@ func (vs *VolumeServer) GetOrHeadHandler(w http.ResponseWriter, r *http.Request)
 		}
 		if invalid_needle || err == storage.ErrorDeleted {
 			NotFound(w)
+		} else if errors.Is(err, backend.ErrTierBackendUnavailable) && hasVolume {
+			// Tier backend (e.g. udm with read_disabled=true or remote recall failure)
+			// could not serve the read. Try a peer replica that may still hold a hot
+			// local .dat. tryProxyToReplica applies the reqIsProxied guard to break
+			// A->B->A loops; for non-replicated volumes it returns false and we
+			// surface the original 500.
+			if vs.ReadMode != "local" {
+				glog.V(0).Infof("tier backend unavailable for %s, falling back to peer: %v", r.URL.Path, err)
+				if vs.tryProxyToReplica(w, r, stats.TierFallbackProxy) {
+					return
+				}
+			}
+			glog.V(0).Infof("tier backend unavailable for %s, no peer replica available: %v", r.URL.Path, err)
+			InternalError(w)
 		} else {
 			InternalError(w)
 		}
