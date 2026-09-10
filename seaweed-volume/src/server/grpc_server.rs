@@ -813,7 +813,7 @@ impl VolumeServer for VolumeGrpcService {
 
         let mut store = self.state.store.write().unwrap();
         store
-            .mount_volume_by_id(vid)
+            .mount_volume_by_id(vid, req.collection.as_deref())
             .map_err(|e| Status::internal(e.to_string()))?;
         self.state.volume_state_notify.notify_one();
 
@@ -958,7 +958,7 @@ impl VolumeServer for VolumeGrpcService {
         if let Err(e) = store.configure_volume(vid, rp) {
             let mut error = format!("volume configure {}: {}", vid, e);
             // Error recovery: try to re-mount anyway
-            if let Err(mount_err) = store.mount_volume_by_id(vid) {
+            if let Err(mount_err) = store.mount_volume_by_id(vid, None) {
                 error += &format!(". Also failed to restore mount: {}", mount_err);
             }
             return Ok(Response::new(volume_server_pb::VolumeConfigureResponse {
@@ -967,7 +967,7 @@ impl VolumeServer for VolumeGrpcService {
         }
 
         // Re-mount the volume
-        if let Err(e) = store.mount_volume_by_id(vid) {
+        if let Err(e) = store.mount_volume_by_id(vid, None) {
             return Ok(Response::new(volume_server_pb::VolumeConfigureResponse {
                 error: format!("volume configure mount {}: {}", vid, e),
             }));
