@@ -90,7 +90,7 @@ func ResolveOneChunkManifest(ctx context.Context, lookupFileIdFn wdclient.Lookup
 	defer bytesBufferPool.Put(bytesBuffer)
 	err := fetchWholeChunk(ctx, bytesBuffer, lookupFileIdFn, chunk.GetFileIdString(), chunk.CipherKey, chunk.IsCompressed)
 	if err != nil {
-		return nil, fmt.Errorf("fail to read manifest %s: %v", chunk.GetFileIdString(), err)
+		return nil, fmt.Errorf("fail to read manifest %s: %w", chunk.GetFileIdString(), err)
 	}
 	m := &filer_pb.FileChunkManifest{}
 	if err := proto.Unmarshal(bytesBuffer.Bytes(), m); err != nil {
