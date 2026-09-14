@@ -18,6 +18,8 @@ type ChunkGroup struct {
 	sectionsLock      sync.RWMutex
 	readerCache       *ReaderCache
 	concurrentReaders int
+	// resolveErr records a manifest resolution failure, guarded by sectionsLock
+	resolveErr error
 }
 
 // NewChunkGroup creates a ChunkGroup with configurable concurrency.
@@ -87,6 +89,10 @@ func (group *ChunkGroup) ReadDataAt(ctx context.Context, fileSize int64, buff []
 
 	group.sectionsLock.RLock()
 	defer group.sectionsLock.RUnlock()
+
+	if group.resolveErr != nil {
+		return 0, 0, group.resolveErr
+	}
 
 	sectionIndexStart, sectionIndexStop := SectionIndex(offset/SectionSize), SectionIndex((offset+int64(len(buff)))/SectionSize)
 	numSections := int(sectionIndexStop - sectionIndexStart + 1)
@@ -229,6 +235,7 @@ func (group *ChunkGroup) SetChunks(chunks []*filer_pb.FileChunk) error {
 
 		resolvedChunks, err := ResolveOneChunkManifest(context.Background(), group.lookupFn, chunk)
 		if err != nil {
+			group.resolveErr = err
 			return err
 		}
 
@@ -250,6 +257,7 @@ func (group *ChunkGroup) SetChunks(chunks []*filer_pb.FileChunk) error {
 	}
 
 	group.sections = sections
+	group.resolveErr = nil
 	return nil
 }
 
@@ -259,12 +267,17 @@ const (
 	// SEEK_HOLE uint32 = 4 // seek to next hole after the offset
 )
 
-// FIXME: needa tests
-func (group *ChunkGroup) SearchChunks(ctx context.Context, offset, fileSize int64, whence uint32) (found bool, out int64) {
+func (group *ChunkGroup) SearchChunks(ctx context.Context, offset, fileSize int64, whence uint32) (found bool, out int64, err error) {
 	group.sectionsLock.RLock()
 	defer group.sectionsLock.RUnlock()
 
-	return group.doSearchChunks(ctx, offset, fileSize, whence)
+	// the section map is unreliable after a failed manifest resolution
+	if group.resolveErr != nil {
+		return false, 0, group.resolveErr
+	}
+
+	found, out = group.doSearchChunks(ctx, offset, fileSize, whence)
+	return found, out, nil
 }
 
 func (group *ChunkGroup) doSearchChunks(ctx context.Context, offset, fileSize int64, whence uint32) (found bool, out int64) {
