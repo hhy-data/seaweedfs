@@ -5,7 +5,7 @@
 use crate::storage::types::*;
 use std::io::{self, Read, Seek, SeekFrom};
 
-const ROWS_TO_READ: usize = 1024;
+pub(crate) const ROWS_TO_READ: usize = 1024;
 
 /// Walk all entries in an .idx file, calling `f` for each.
 /// Mirrors Go's `WalkIndexFile()`.
