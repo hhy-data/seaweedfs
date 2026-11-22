@@ -247,7 +247,8 @@ func (wfs *WFS) flushMetadataToFiler(ctx context.Context, fh *FileHandle, dir, n
 
 	glog.V(4).Infof("%s set chunks: %v", fileFullPath, len(entry.GetChunks()))
 
-	manifestChunks, nonManifestChunks := filer.SeparateManifestChunks(entry.GetChunks())
+	snapshot := entry.GetChunks()
+	manifestChunks, nonManifestChunks := filer.SeparateManifestChunks(snapshot)
 
 	chunks, _ := filer.CompactFileChunks(context.Background(), wfs.LookupFn(), nonManifestChunks)
 
@@ -264,13 +265,27 @@ func (wfs *WFS) flushMetadataToFiler(ctx context.Context, fh *FileHandle, dir, n
 		// not good, but should be ok
 		glog.V(0).Infof("MaybeManifestize: %v", manifestErr)
 	}
-	entry.Chunks = append(chunks, manifestChunks...)
+	// Uploads attach their chunks to the entry without the handle lock, and
+	// the transforms above can outlast the upload of a chunk sealed while
+	// this flush was already running. Replacing the chunks wholesale here
+	// dropped those late references from the entry — the filer stored a
+	// version without them and the data they name became unreachable, which
+	// reads back as zeros for the range they covered. Fold in what attached
+	// since the snapshot instead (master #12722).
+	entry.UpdateEntry(func(e *filer_pb.Entry) {
+		e.Chunks = withChunksAttachedSince(snapshot, append(chunks, manifestChunks...), e.Chunks)
+	})
 
 	// Clone the proto entry for the filer request so that mapPbIdFromLocalToFiler
 	// does not mutate the file handle's live entry. Without the clone, a concurrent
 	// Lookup can observe filer-side uid/gid on the file handle entry and return it
 	// to the kernel, which caches it and then rejects opens by the local user.
-	requestEntry := proto.Clone(entry.GetEntry()).(*filer_pb.Entry)
+	// The clone is taken under the entry lock so chunks attached by a late
+	// upload land in the request too, not only in the handle.
+	var requestEntry *filer_pb.Entry
+	entry.UpdateEntry(func(e *filer_pb.Entry) {
+		requestEntry = proto.Clone(e).(*filer_pb.Entry)
+	})
 	request := &filer_pb.CreateEntryRequest{
 		Directory:                string(dir),
 		Entry:                    requestEntry,
