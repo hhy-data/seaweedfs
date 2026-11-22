@@ -1,6 +1,7 @@
 package mount
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -211,6 +212,38 @@ func (fh *FileHandle) UpdateEntry(fn func(entry *filer_pb.Entry)) *filer_pb.Entr
 
 func (fh *FileHandle) AddChunks(chunks []*filer_pb.FileChunk) {
 	fh.entry.AppendChunks(chunks)
+}
+
+// withChunksAttachedSince returns processed, the chunks a flush made from
+// snapshot, followed by the chunks uploads attached to current after snapshot
+// was taken: they attach without the handle lock.
+func withChunksAttachedSince(snapshot, processed, current []*filer_pb.FileChunk) []*filer_pb.FileChunk {
+	inSnapshot := make(map[string]bool, len(snapshot))
+	for _, c := range snapshot {
+		inSnapshot[contentFileIdKey(c)] = true
+	}
+	chunks := append([]*filer_pb.FileChunk{}, processed...)
+	for _, c := range current {
+		if !inSnapshot[contentFileIdKey(c)] {
+			chunks = append(chunks, c)
+		}
+	}
+	return chunks
+}
+
+// contentFileIdKey identifies a chunk reference by its file id, accepting both
+// encodings; truncation shrinks a chunk in place, so callers keying on size or
+// offset should build on this but add their own extent.
+func contentFileIdKey(c *filer_pb.FileChunk) string {
+	fid := c.Fid
+	if fid == nil {
+		if parsed, err := filer_pb.ToFileIdObject(c.FileId); err == nil {
+			fid = parsed
+		} else {
+			return c.FileId
+		}
+	}
+	return fmt.Sprintf("%d,%x,%x", fid.VolumeId, fid.FileKey, fid.Cookie)
 }
 
 func (fh *FileHandle) ReleaseHandle() {
