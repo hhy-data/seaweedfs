@@ -156,6 +156,12 @@ func (wfs *WFS) doFlush(ctx context.Context, fh *FileHandle, uid, gid uint32, al
 	// Synchronous flush path (normal mode, fsync, or no dirty data)
 	fh.asyncFlushPending = false
 
+	// Snapshot the page-write count before the pages upload. A write that
+	// lands during the upload is not in the committed chunks; the count
+	// comparison at commit time keeps the handle dirty so the next flush
+	// publishes it.
+	writesBeforeCommit := fh.pageWrites.Load()
+
 	// Check quota including uncommitted writes for real-time enforcement
 	isOverQuota := wfs.IsOverQuotaWithUncommitted()
 	if !isOverQuota {
@@ -181,7 +187,7 @@ func (wfs *WFS) doFlush(ctx context.Context, fh *FileHandle, uid, gid uint32, al
 	}
 
 	if err := retryMetadataFlush(ctx, func() error {
-		return wfs.flushMetadataToFiler(ctx, fh, dir, name, uid, gid)
+		return wfs.flushMetadataToFiler(ctx, fh, dir, name, uid, gid, writesBeforeCommit)
 	}, func(nextAttempt, totalAttempts int, backoff time.Duration, err error) {
 		glog.Warningf("%v fh %d flush: retrying metadata flush (attempt %d/%d) after %v: %v",
 			fileFullPath, fh.fh, nextAttempt, totalAttempts, backoff, err)
@@ -203,8 +209,13 @@ func (wfs *WFS) doFlush(ctx context.Context, fh *FileHandle, uid, gid uint32, al
 // When -dlm is enabled, the distributed lock is already held by the FileHandle
 // from open-for-write through close, so no additional distributed lock is
 // needed here. The local fhLockTable lock below serializes within this mount.
-func (wfs *WFS) flushMetadataToFiler(ctx context.Context, fh *FileHandle, dir, name string, uid, gid uint32) error {
+//
+// writesBeforeCommit is the handle's pageWrites when this flush started
+// uploading its pages. A write that landed since is not in the committed
+// chunks, so dirtyMetadata stays set and the next flush publishes it.
+func (wfs *WFS) flushMetadataToFiler(ctx context.Context, fh *FileHandle, dir, name string, uid, gid uint32, writesBeforeCommit uint64) error {
 	fileFullPath := fh.FullPath()
+
 	glog.V(4).Infof("flushMetadataToFiler %s/%s inode %d fh %d", dir, name, fh.inode, fh.fh)
 
 	fhActiveLock := fh.wfs.fhLockTable.AcquireLock("doFlush", fh.fh, util.ExclusiveLock)
@@ -236,7 +247,8 @@ func (wfs *WFS) flushMetadataToFiler(ctx context.Context, fh *FileHandle, dir, n
 
 	glog.V(4).Infof("%s set chunks: %v", fileFullPath, len(entry.GetChunks()))
 
-	manifestChunks, nonManifestChunks := filer.SeparateManifestChunks(entry.GetChunks())
+	snapshot := entry.GetChunks()
+	manifestChunks, nonManifestChunks := filer.SeparateManifestChunks(snapshot)
 
 	chunks, _ := filer.CompactFileChunks(context.Background(), wfs.LookupFn(), nonManifestChunks)
 
@@ -253,13 +265,27 @@ func (wfs *WFS) flushMetadataToFiler(ctx context.Context, fh *FileHandle, dir, n
 		// not good, but should be ok
 		glog.V(0).Infof("MaybeManifestize: %v", manifestErr)
 	}
-	entry.Chunks = append(chunks, manifestChunks...)
+	// Uploads attach their chunks to the entry without the handle lock, and
+	// the transforms above can outlast the upload of a chunk sealed while
+	// this flush was already running. Replacing the chunks wholesale here
+	// dropped those late references from the entry — the filer stored a
+	// version without them and the data they name became unreachable, which
+	// reads back as zeros for the range they covered. Fold in what attached
+	// since the snapshot instead (master #12722).
+	entry.UpdateEntry(func(e *filer_pb.Entry) {
+		e.Chunks = withChunksAttachedSince(snapshot, append(chunks, manifestChunks...), e.Chunks)
+	})
 
 	// Clone the proto entry for the filer request so that mapPbIdFromLocalToFiler
 	// does not mutate the file handle's live entry. Without the clone, a concurrent
 	// Lookup can observe filer-side uid/gid on the file handle entry and return it
 	// to the kernel, which caches it and then rejects opens by the local user.
-	requestEntry := proto.Clone(entry.GetEntry()).(*filer_pb.Entry)
+	// The clone is taken under the entry lock so chunks attached by a late
+	// upload land in the request too, not only in the handle.
+	var requestEntry *filer_pb.Entry
+	entry.UpdateEntry(func(e *filer_pb.Entry) {
+		requestEntry = proto.Clone(e).(*filer_pb.Entry)
+	})
 	request := &filer_pb.CreateEntryRequest{
 		Directory:                string(dir),
 		Entry:                    requestEntry,
@@ -295,9 +321,10 @@ func (wfs *WFS) flushMetadataToFiler(ctx context.Context, fh *FileHandle, dir, n
 		wfs.inodeToPath.InvalidateChildrenCache(util.FullPath(dir))
 	}
 
-	if err == nil {
+	if err == nil && fh.pageWrites.Load() == writesBeforeCommit {
 		fh.dirtyMetadata = false
 	}
+
 
 	return err
 }

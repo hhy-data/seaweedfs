@@ -99,7 +99,15 @@ func (pages *ChunkedDirtyPages) saveChunkedFileIntervalToStorage(reader io.Reade
 
 	fileFullPath := pages.fh.FullPath()
 	fileName := fileFullPath.Name()
-	chunk, err := pages.fh.wfs.saveDataAsChunk(fileFullPath)(reader, fileName, offset, modifiedTsNs, uint64(size))
+	var chunk *filer_pb.FileChunk
+	var err error
+	if hook := g6LookupHook(pages.fh.fh); hook != nil {
+		// Test seam: route the upload through the fake registered for this
+		// handle instead of a real volume server.
+		chunk, err = g6HookUpload(hook, reader, fileName, offset, modifiedTsNs, uint64(size))
+	} else {
+		chunk, err = pages.fh.wfs.saveDataAsChunk(fileFullPath)(reader, fileName, offset, modifiedTsNs, uint64(size))
+	}
 	if err != nil {
 		glog.V(0).Infof("%v saveToStorage [%d,%d): %v", fileFullPath, offset, offset+size, err)
 		pages.setLastError(err)
