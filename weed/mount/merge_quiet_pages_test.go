@@ -71,11 +71,11 @@ func (p *proxyVolume) CreateEntry(ctx context.Context, r *filer_pb.CreateEntryRe
 		inBefore[c.GetFileIdString()] = true
 	}
 	kept := make(map[string]bool, len(r.GetEntry().GetChunks()))
-	merged := false
+	// maybeMergeChunks replaces every chunk the entry named.
+	merged := len(before) > 0
 	for _, c := range r.GetEntry().GetChunks() {
 		kept[c.GetFileIdString()] = true
-		// maybeMergeChunks stamps the chunks it writes 0.
-		merged = merged || c.GetModifiedTsNs() == 0 && !inBefore[c.GetFileIdString()]
+		merged = merged && !inBefore[c.GetFileIdString()]
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -273,8 +273,8 @@ func TestFlushMergeThroughChunkProxy(t *testing.T) {
 		flush(t, w, fh, &contentPublication{writes: fh.pageWrites.Load()})
 
 		entry, committed := vol.committed(t)
-		if len(entry.Chunks) != 1 || entry.Chunks[0].ModifiedTsNs != 0 {
-			t.Fatalf("the quiet flush did not merge: %v", entry.Chunks)
+		if len(entry.Chunks) != 1 || entry.Chunks[0].ModifiedTsNs != a.ModifiedTsNs {
+			t.Fatalf("the quiet flush did not merge into one chunk stamped as the oldest data it holds: %v", entry.Chunks)
 		}
 		vol.mu.Lock()
 		blobs := len(vol.stored)
@@ -288,8 +288,8 @@ func TestFlushMergeThroughChunkProxy(t *testing.T) {
 	})
 
 	// An older page is still uploading when a newer page of the same bytes
-	// has attached. A merge would read the newer page, and the older one,
-	// attaching after it, would outrank the merged chunks, which are stamped 0.
+	// has attached. The flush leaves the merge to a later one, and the older
+	// page, attaching last, must not outrank the newer one.
 	t.Run("UploadInFlight", func(t *testing.T) {
 		vol := newVolume()
 		var hold atomic.Bool
@@ -542,5 +542,54 @@ func TestFlushMergeRacesWithWritesAndReads(t *testing.T) {
 	}
 	if _, committed := vol.committed(t); !bytes.Equal(committed, want) {
 		t.Fatal("the filer's entry does not hold what was written")
+	}
+}
+
+// A merge of a sparse file must keep the data past each hole, and leave the
+// holes unwritten.
+func TestFlushMergeKeepsDataPastAHole(t *testing.T) {
+	var chunks []*filer_pb.FileChunk
+	vol := &proxyVolume{stored: map[string][]byte{}}
+	// Overlapping 256-byte chunks over [0,300) and [512,856), a hole between.
+	for i, offset := range []int64{0, 22, 44, 512, 534, 556, 578, 600} {
+		c := &filer_pb.FileChunk{Fid: &filer_pb.FileId{VolumeId: 1, FileKey: uint64(i + 1), Cookie: 1}, Offset: offset, Size: 256, ModifiedTsNs: int64(i + 1)}
+		b := make([]byte, 256)
+		x := uint32(i+1) * 2654435761
+		for j := range b {
+			x = x*1103515245 + 12345
+			b[j] = byte(x >> 16)
+		}
+		vol.stored[c.GetFileIdString()] = b
+		chunks = append(chunks, c)
+	}
+	const fileSize = 856
+	want := make([]byte, fileSize)
+	for _, c := range chunks {
+		copy(want[c.Offset:], vol.stored[c.GetFileIdString()])
+	}
+	base := &filer_pb.Entry{Name: "file", Attributes: &filer_pb.FuseAttributes{
+		Inode: 42, Uid: 2000, Gid: 20, FileMode: 0644, FileSize: fileSize, Mtime: 10,
+	}, Chunks: chunks, CommitTsNs: 100}
+
+	w, fh, _ := openProxyHandle(t, vol, base, vol)
+	lock := w.fhLockTable.AcquireLock("test flush", fh.fh, util.ExclusiveLock)
+	fh.dirtyMetadata = true
+	w.fhLockTable.ReleaseLock(fh.fh, lock)
+	if err := w.flushMetadataToFiler(context.Background(), fh, "/dir", "file", 0, 0, nil, &contentPublication{writes: fh.pageWrites.Load()}); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	entry, got := vol.committed(t)
+	if _, merges := vol.counts(); merges != 1 {
+		t.Fatalf("the flush did not merge the bloated file: %v", entry.Chunks)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("the merge changed the file's content: [0,300) kept %v, hole zero %v, [512,856) kept %v",
+			bytes.Equal(got[:300], want[:300]), bytes.Equal(got[300:512], want[300:512]), bytes.Equal(got[512:], want[512:]))
+	}
+	for _, c := range entry.Chunks {
+		if c.Offset < 512 && c.Offset+int64(c.Size) > 300 {
+			t.Errorf("merged chunk [%d,%d) writes into the hole [300,512)", c.Offset, c.Offset+int64(c.Size))
+		}
 	}
 }
